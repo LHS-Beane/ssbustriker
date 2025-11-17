@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SSBU Stage Selector</title>
     <link rel="stylesheet" href="style.css">
-    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <script src="peerjs.min.js"></script>
 </head>
 <body>
 
@@ -16,14 +16,14 @@
         <div id="connection-area">
             <h2 id="conn-status">1. Connect to Opponent</h2>
             <div id="host-controls">
-                <button id="host-btn">Create Room</button>
+                <button id="host-btn" class="btn-full">Create Room</button>
                 <p>Your Room ID: <strong id="room-id">...</strong></p>
                 <small>(Send this ID to your opponent)</small>
             </div>
             <div id="client-controls">
                 <p>Enter Opponent's Room ID:</p>
                 <input type="text" id="join-id-input" placeholder="Enter Room ID">
-                <button id="join-btn">Join Room</button>
+                <button id="join-btn" class="btn-full">Join Room</button>
             </div>
         </div>
 
@@ -31,8 +31,8 @@
             <h2 id="setup-status">2. Game Setup</h2>
             <div id="role-select">
                 <p>Are you playing Game 1 (Starters) or a Subsequent Game (Counterpicks)?</p>
-                <button id="game-1-btn">Game 1 (1-2-1 Striking)</button>
-                <button id="subsequent-btn">Subsequent Game (Winner Bans)</button>
+                <button id="game-1-btn" class="btn-full">Game 1 (1-2-1 Striking)</button>
+                <button id="subsequent-btn" class="btn-full">Subsequent Game (Winner Bans)</button>
             </div>
 
             <div id="role-prompt"></div>
@@ -56,7 +56,7 @@
         <div id="final-stage" class="hidden">
             <h2>🎉 Final Stage Selected! 🎉</h2>
             <p id="final-stage-name"></p>
-            <button id="reset-btn">Start Next Game</button>
+            <button id="reset-btn" class="btn-full">Start Next Game</button>
         </div>
 
     </div>
