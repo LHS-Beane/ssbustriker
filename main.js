@@ -72,15 +72,23 @@ el.hostBtn.addEventListener('click', () => {
     peer.on('connection', (connection) => {
         setupConnection(connection);
     });
+
+    peer.on('error', (err) => {
+        alert('An error occurred: ' + err.message);
+        el.hostBtn.disabled = false; // Allow retrying
+    });
 });
 
 el.joinBtn.addEventListener('click', () => {
-    const joinId = el.joinIdInput.value;
+    const joinId = el.joinIdInput.value.trim(); // Trim whitespace
     if (joinId) {
         peer = new Peer(); // Create a client peer
         peer.on('open', () => {
             const connection = peer.connect(joinId);
             setupConnection(connection);
+        });
+        peer.on('error', (err) => {
+            alert('Connection failed: ' + err.message);
         });
     }
 });
@@ -104,7 +112,7 @@ function setupConnection(connection) {
 
     conn.on('close', () => {
         alert('Opponent has disconnected.');
-        resetApp();
+        resetApp(); // Go back to setup screen
     });
 }
 
@@ -223,11 +231,16 @@ function initSubsequentGame(myRole) {
     updateSubsequentGameInstructions();
 }
 
-// --- 6. S T A T E   M A C H I N E S ---
+// --- 6. S T A T E   M A C H I N E S (with Bug Fix) ---
 
 function runGame1Logic(stage, actor) {
-    // actor is 'me' or 'opponent'
     if (actor === 'me') {
+        // --- THIS IS THE FIX ---
+        // Immediately update the local game state
+        gameState.bans.push(stage); 
+        gameState.available = gameState.available.filter(s => s !== stage);
+        // --- END FIX ---
+        
         sendData({ type: 'ban', stage: stage });
     }
     
@@ -260,6 +273,12 @@ function runSubsequentGameLogic(stage, actor) {
     if (actor === 'me') {
         // This was a ban or a pick
         if (myRole === 'banner') {
+            // --- THIS IS THE FIX ---
+            // Immediately update the local game state
+            gameState.bans.push(stage);
+            gameState.available = gameState.available.filter(s => s !== stage);
+            // --- END FIX ---
+            
             sendData({ type: 'ban', stage: stage });
             gameState.banCount++;
         } else if (myRole === 'picker') {
@@ -275,12 +294,20 @@ function runSubsequentGameLogic(stage, actor) {
     } 
     // All 3 bans are in, it's the picker's turn
     else if (gameState.banCount === 3) {
+        // We add this one check in case the 'banner' (opponent)
+        // just sent their last ban.
+        if (actor === 'opponent') {
+            // This was the 3rd and final ban from the opponent
+            // This logic is now handled by the 'ban' case in handleMessage()
+            // but we'll leave this check for safety.
+        }
         gameState.turn = 'picker';
     }
     
     renderStages();
     updateSubsequentGameInstructions();
 }
+
 
 // --- 7. U I   R E N D E R I N G ---
 
@@ -345,7 +372,7 @@ function updateGame1Instructions() {
     el.instructions.textContent = text;
 }
 
-function updateSubsequentGameInstructions() {
+function updateSubsequentGameInstructions() {.
     let text = '';
     if (myRole === gameState.turn) {
         // My turn
@@ -380,9 +407,20 @@ function showFinalStage(stage) {
 }
 
 // --- 8. A P P   R E S E T ---
-el.resetBtn.addEventListener('click', resetApp);
+el.resetBtn.addEventListener('click', () => {
+    // We only reset the UI part. The connection stays active.
+    // Send a 'reset' signal so the other player also resets
+    sendData({ type: 'reset' });
+    resetAppUI();
+});
 
-function resetApp() {
+// Handle the reset signal from the opponent
+function handleResetSignal() {
+    resetAppUI();
+}
+
+// Separate UI reset logic
+function resetAppUI() {
     // Reset state
     myRole = '';
     gameState = { type: '', available: [], bans: [], turn: '', banCount: 0 };
@@ -399,5 +437,39 @@ function resetApp() {
     } else {
         el.roleSelect.classList.add('hidden');
         el.setupStatus.textContent = 'Waiting for Host to set up the next game...';
+    }
+}
+
+// Add the new reset case to the message handler
+function handleMessage(data) {
+    switch(data.type) {
+        case 'setup':
+            // Received setup from Host
+            myRole = data.role;
+            if (data.game === 'game1') {
+                initGame1(myRole);
+            } else if (data.game === 'subsequent') {
+                initSubsequentGame(myRole);
+            }
+            break;
+        case 'ban':
+            // Opponent banned a stage
+            gameState.bans.push(data.stage);
+            gameState.available = gameState.available.filter(s => s !== data.stage);
+            
+            if (gameState.type === 'game1') {
+                runGame1Logic(data.stage, 'opponent');
+            } else {
+                runSubsequentGameLogic(data.stage, 'opponent');
+            }
+            break;
+        case 'pick':
+            // Opponent picked a stage (Subsequent Game)
+            showFinalStage(data.stage);
+            break;
+        case 'reset':
+            // Opponent clicked 'Start Next Game'
+            handleResetSignal();
+            break;
     }
 }
