@@ -7,16 +7,16 @@ body {
     place-items: center;
     min-height: 100vh;
     margin: 0;
-    padding: 1rem 0; /* Add padding for small screens */
+    padding: 1rem 0;
     box-sizing: border-box;
 }
 
 .container {
     background: #ffffff;
-    padding: 2rem 1.5rem; /* Adjust padding for mobile */
+    padding: 1.5rem;
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-    width: 95%; /* Use percentage for responsiveness */
+    width: 90%; 
     max-width: 600px;
     text-align: center;
 }
@@ -46,6 +46,9 @@ small {
     border-top: 1px solid #eee;
     padding-top: 1rem;
     margin-top: 1rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
 }
 
 /* --- Buttons & Inputs --- */
@@ -56,11 +59,11 @@ button {
     padding: 10px 15px;
     border-radius: 5px;
     font-size: 1rem;
-    font-weight: 500; /* Slightly bolder text */
+    font-weight: 500;
     cursor: pointer;
     transition: background-color 0.2s ease;
     margin: 5px;
-    -webkit-tap-highlight-color: transparent; /* Remove tap highlight on mobile */
+    -webkit-tap-highlight-color: transparent;
 }
 
 button:hover {
@@ -74,11 +77,11 @@ button:disabled {
 }
 
 input[type="text"] {
-    padding: 10px;
+    padding: 12px;
     font-size: 1rem;
     border: 1px solid #ccc;
     border-radius: 5px;
-    margin-right: 5px;
+    margin-bottom: 10px;
 }
 
 /* --- Stage List --- */
@@ -130,7 +133,7 @@ input[type="text"] {
 #instructions {
     font-size: 1.1rem;
     font-weight: 600;
-    color: #d9534f; /* Reddish color for instructions */
+    color: #d9534f;
 }
 
 #final-stage {
@@ -141,37 +144,22 @@ input[type="text"] {
 }
 
 #final-stage-name {
-    font-size: clamp(1.5rem, 5vw, 2rem); /* Responsive font size */
+    font-size: clamp(1.5rem, 5vw, 2.5rem);
     font-weight: bold;
     color: #0056b3;
-    word-wrap: break-word; /* Ensure long names wrap */
+    word-wrap: break-word;
 }
 
 /* --- Mobile Optimizations --- */
-
-/* Make main action buttons and inputs large and tappable */
 .btn-full, 
 input[type="text"] {
     width: 100%;
-    box-sizing: border-box; /* Includes padding in the width */
-    padding: 12px 15px;     /* Larger tap area */
-    font-size: 1.1rem;      /* Larger text */
-    margin: 8px 0;          /* Add vertical spacing */
+    box-sizing: border-box;
+    padding: 12px 15px;
+    font-size: 1.1rem;
+    margin: 8px 0;
 }
 
-input[type="text"] {
-    margin-right: 0; /* Remove old side margin */
-}
-
-/* This stacks the "Join ID" input and "Join" button vertically */
-#client-controls {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-}
-
-/* This keeps the role-prompt buttons (e.g., "I Ban First") 
-   side-by-side, as they were, overriding the .btn-full style. */
 #role-prompt button {
     width: auto;
     padding: 10px 15px;
