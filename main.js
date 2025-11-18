@@ -59,7 +59,16 @@ const el = {
 el.hostBtn.addEventListener('click', () => {
     // Generate a simple room ID
     const newRoomId = 'ssbu-' + Math.random().toString(36).substr(2, 6);
-    peer = new Peer(newRoomId);
+    
+    // FIREWALL FIX: Use Google's STUN servers to help punch through network blocks
+    peer = new Peer(newRoomId, {
+        config: {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' }
+            ]
+        }
+    });
     
     peer.on('open', (id) => {
         el.roomId.textContent = id;
@@ -74,19 +83,30 @@ el.hostBtn.addEventListener('click', () => {
     });
 
     peer.on('error', (err) => {
-        alert('An error occurred: ' + err.message);
-        el.hostBtn.disabled = false; // Allow retrying
+        console.error(err);
+        alert('Connection Error: ' + err.type + '\n' + err.message);
+        el.hostBtn.disabled = false; 
     });
 });
 
 el.joinBtn.addEventListener('click', () => {
     const joinId = el.joinIdInput.value.trim(); // Trim whitespace
     if (joinId) {
-        peer = new Peer(); // Create a client peer
+        // FIREWALL FIX: Use Google's STUN servers here too
+        peer = new Peer(null, {
+            config: {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' }
+                ]
+            }
+        });
+
         peer.on('open', () => {
             const connection = peer.connect(joinId);
             setupConnection(connection);
         });
+        
         peer.on('error', (err) => {
             alert('Connection failed: ' + err.message);
         });
