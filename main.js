@@ -112,7 +112,7 @@ function setupConnection(connection) {
 
     conn.on('close', () => {
         alert('Opponent has disconnected.');
-        resetApp(); // Go back to setup screen
+        resetAppUI(); // Go back to setup screen
     });
 }
 
@@ -174,39 +174,11 @@ el.subsequentBtn.addEventListener('click', () => {
 
 // --- 5. G A M E   L O G I C   H A N D L E R S ---
 
-function handleMessage(data) {
-    switch(data.type) {
-        case 'setup':
-            // Received setup from Host
-            myRole = data.role;
-            if (data.game === 'game1') {
-                initGame1(myRole);
-            } else if (data.game === 'subsequent') {
-                initSubsequentGame(myRole);
-            }
-            break;
-        case 'ban':
-            // Opponent banned a stage
-            gameState.bans.push(data.stage);
-            gameState.available = gameState.available.filter(s => s !== data.stage);
-            
-            if (gameState.type === 'game1') {
-                runGame1Logic(data.stage, 'opponent');
-            } else {
-                runSubsequentGameLogic(data.stage, 'opponent');
-            }
-            break;
-        case 'pick':
-            // Opponent picked a stage (Subsequent Game)
-            showFinalStage(data.stage);
-            break;
-    }
-}
-
-function initGame1(myRole) {
+function initGame1(role) {
     el.setupArea.classList.add('hidden');
     el.stageArea.classList.remove('hidden');
     
+    myRole = role; // Ensure role is set locally
     gameState.type = 'game1';
     gameState.available = [...STARTERS];
     gameState.bans = [];
@@ -217,10 +189,11 @@ function initGame1(myRole) {
     updateGame1Instructions();
 }
 
-function initSubsequentGame(myRole) {
+function initSubsequentGame(role) {
     el.setupArea.classList.add('hidden');
     el.stageArea.classList.remove('hidden');
 
+    myRole = role; // Ensure role is set locally
     gameState.type = 'subsequent';
     gameState.available = [...FULL_STAGE_LIST];
     gameState.bans = [];
@@ -231,16 +204,13 @@ function initSubsequentGame(myRole) {
     updateSubsequentGameInstructions();
 }
 
-// --- 6. S T A T E   M A C H I N E S (with Bug Fix) ---
+// --- 6. S T A T E   M A C H I N E S ---
 
 function runGame1Logic(stage, actor) {
     if (actor === 'me') {
-        // --- THIS IS THE FIX ---
         // Immediately update the local game state
         gameState.bans.push(stage); 
         gameState.available = gameState.available.filter(s => s !== stage);
-        // --- END FIX ---
-        
         sendData({ type: 'ban', stage: stage });
     }
     
@@ -273,12 +243,9 @@ function runSubsequentGameLogic(stage, actor) {
     if (actor === 'me') {
         // This was a ban or a pick
         if (myRole === 'banner') {
-            // --- THIS IS THE FIX ---
             // Immediately update the local game state
             gameState.bans.push(stage);
             gameState.available = gameState.available.filter(s => s !== stage);
-            // --- END FIX ---
-            
             sendData({ type: 'ban', stage: stage });
             gameState.banCount++;
         } else if (myRole === 'picker') {
@@ -294,13 +261,6 @@ function runSubsequentGameLogic(stage, actor) {
     } 
     // All 3 bans are in, it's the picker's turn
     else if (gameState.banCount === 3) {
-        // We add this one check in case the 'banner' (opponent)
-        // just sent their last ban.
-        if (actor === 'opponent') {
-            // This was the 3rd and final ban from the opponent
-            // This logic is now handled by the 'ban' case in handleMessage()
-            // but we'll leave this check for safety.
-        }
         gameState.turn = 'picker';
     }
     
@@ -372,7 +332,7 @@ function updateGame1Instructions() {
     el.instructions.textContent = text;
 }
 
-function updateSubsequentGameInstructions() {.
+function updateSubsequentGameInstructions() {
     let text = '';
     if (myRole === gameState.turn) {
         // My turn
@@ -445,6 +405,7 @@ function handleMessage(data) {
     switch(data.type) {
         case 'setup':
             // Received setup from Host
+            // This logic mirrors the init functions but triggers from the network message
             myRole = data.role;
             if (data.game === 'game1') {
                 initGame1(myRole);
