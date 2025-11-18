@@ -17,12 +17,12 @@ const FULL_STAGE_LIST = [...STARTERS, ...COUNTERPICKS];
 let peer;
 let conn;
 let isHost = false;
-let myRole = ''; // 'banner', 'picker', 'striker_1', 'striker_2'
+let myRole = ''; 
 let gameState = {
-    type: '', // 'game1' or 'subsequent'
+    type: '', 
     available: [],
     bans: [],
-    turn: '', // 'striker_1', 'striker_2'
+    turn: '', 
     banCount: 0
 };
 
@@ -56,19 +56,12 @@ const el = {
 
 // --- 3. N E T W O R K I N G   L O G I C (Peer.js) ---
 
+// REVERTED TO SIMPLE SETTINGS (Simpler is better for stability usually)
 el.hostBtn.addEventListener('click', () => {
     // Generate a simple room ID
     const newRoomId = 'ssbu-' + Math.random().toString(36).substr(2, 6);
     
-    // FIREWALL FIX: Use Google's STUN servers to help punch through network blocks
-    peer = new Peer(newRoomId, {
-        config: {
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' }
-            ]
-        }
-    });
+    peer = new Peer(newRoomId); // Uses default settings
     
     peer.on('open', (id) => {
         el.roomId.textContent = id;
@@ -83,30 +76,19 @@ el.hostBtn.addEventListener('click', () => {
     });
 
     peer.on('error', (err) => {
-        console.error(err);
-        alert('Connection Error: ' + err.type + '\n' + err.message);
+        alert('Error: ' + err.type);
         el.hostBtn.disabled = false; 
     });
 });
 
 el.joinBtn.addEventListener('click', () => {
-    const joinId = el.joinIdInput.value.trim(); // Trim whitespace
+    const joinId = el.joinIdInput.value.trim(); 
     if (joinId) {
-        // FIREWALL FIX: Use Google's STUN servers here too
-        peer = new Peer(null, {
-            config: {
-                iceServers: [
-                    { urls: 'stun:stun.l.google.com:19302' },
-                    { urls: 'stun:stun1.l.google.com:19302' }
-                ]
-            }
-        });
-
+        peer = new Peer(); // Uses default settings
         peer.on('open', () => {
             const connection = peer.connect(joinId);
             setupConnection(connection);
         });
-        
         peer.on('error', (err) => {
             alert('Connection failed: ' + err.message);
         });
@@ -119,7 +101,6 @@ function setupConnection(connection) {
     el.connArea.classList.add('hidden');
     el.setupArea.classList.remove('hidden');
 
-    // Host controls the game setup
     if (isHost) {
         el.roleSelect.classList.remove('hidden');
     } else {
@@ -132,7 +113,7 @@ function setupConnection(connection) {
 
     conn.on('close', () => {
         alert('Opponent has disconnected.');
-        resetAppUI(); // Go back to setup screen
+        resetAppUI(); 
     });
 }
 
@@ -145,23 +126,20 @@ function sendData(data) {
 // --- 4. G A M E   S E T U P   L O G I C ---
 
 el.game1Btn.addEventListener('click', () => {
-    // Host selected Game 1
     el.roleSelect.classList.add('hidden');
     el.rolePrompt.innerHTML = `
-        <p>Who is banning first? (Per 6.3.3: Home Team in R1, Winner of previous Round in subsequent Rounds)</p>
-        <button id="host-strikes-first">I Ban First (Striker 1)</button>
-        <button id="client-strikes-first">Opponent Bans First (Striker 2)</button>
+        <p>Who is banning first? (Home Team in R1, Winner in others)</p>
+        <button id="host-strikes-first">I Ban First</button>
+        <button id="client-strikes-first">Opponent Bans First</button>
     `;
 
     document.getElementById('host-strikes-first').addEventListener('click', () => {
-        // Host is Striker 1
         myRole = 'striker_1';
         sendData({ type: 'setup', game: 'game1', role: 'striker_2' });
         initGame1('striker_1');
     });
 
     document.getElementById('client-strikes-first').addEventListener('click', () => {
-        // Host is Striker 2
         myRole = 'striker_2';
         sendData({ type: 'setup', game: 'game1', role: 'striker_1' });
         initGame1('striker_2');
@@ -169,23 +147,20 @@ el.game1Btn.addEventListener('click', () => {
 });
 
 el.subsequentBtn.addEventListener('click', () => {
-    // Host selected Subsequent Game
     el.roleSelect.classList.add('hidden');
     el.rolePrompt.innerHTML = `
-        <p>Did you win the previous game? (Winner bans 3)</p>
+        <p>Did you win the previous game?</p>
         <button id="host-won">Yes, I Won (Banner)</button>
         <button id="client-won">No, I Lost (Picker)</button>
     `;
     
     document.getElementById('host-won').addEventListener('click', () => {
-        // Host is Banner
         myRole = 'banner';
         sendData({ type: 'setup', game: 'subsequent', role: 'picker' });
         initSubsequentGame('banner');
     });
 
     document.getElementById('client-won').addEventListener('click', () => {
-        // Host is Picker
         myRole = 'picker';
         sendData({ type: 'setup', game: 'subsequent', role: 'banner' });
         initSubsequentGame('picker');
@@ -198,12 +173,12 @@ function initGame1(role) {
     el.setupArea.classList.add('hidden');
     el.stageArea.classList.remove('hidden');
     
-    myRole = role; // Ensure role is set locally
+    myRole = role; 
     gameState.type = 'game1';
     gameState.available = [...STARTERS];
     gameState.bans = [];
-    gameState.turn = 'striker_1'; // Striker 1 always goes first
-    gameState.banCount = 0; // Total bans in the 1-2-1 process
+    gameState.turn = 'striker_1'; 
+    gameState.banCount = 0; 
 
     renderStages();
     updateGame1Instructions();
@@ -213,22 +188,22 @@ function initSubsequentGame(role) {
     el.setupArea.classList.add('hidden');
     el.stageArea.classList.remove('hidden');
 
-    myRole = role; // Ensure role is set locally
+    myRole = role; 
     gameState.type = 'subsequent';
     gameState.available = [...FULL_STAGE_LIST];
     gameState.bans = [];
-    gameState.banCount = 0; // Winner bans 3
-    gameState.turn = 'banner'; // Banner always goes first
+    gameState.banCount = 0; 
+    gameState.turn = 'banner'; 
 
     renderStages();
     updateSubsequentGameInstructions();
 }
 
-// --- 6. S T A T E   M A C H I N E S ---
+// --- 6. S T A T E   M A C H I N E S (STREAMLINED BAN LOGIC) ---
 
 function runGame1Logic(stage, actor) {
     if (actor === 'me') {
-        // Immediately update the local game state
+        // STREAMLINED: Immediately update local state to prevent double-clicking
         gameState.bans.push(stage); 
         gameState.available = gameState.available.filter(s => s !== stage);
         sendData({ type: 'ban', stage: stage });
@@ -236,21 +211,16 @@ function runGame1Logic(stage, actor) {
     
     gameState.banCount++;
 
-    // 1-2-1 Striking logic
-    // Ban 1 (by S1)
     if (gameState.banCount === 1) { 
         gameState.turn = 'striker_2';
     }
-    // Ban 2 & 3 (by S2)
     else if (gameState.banCount === 2) {
-        gameState.turn = 'striker_2'; // Stays S2's turn
+        gameState.turn = 'striker_2'; 
     }
     else if (gameState.banCount === 3) {
         gameState.turn = 'striker_1';
     }
-    // Ban 4 (by S1)
     else if (gameState.banCount === 4) {
-        // Game is over
         showFinalStage(gameState.available[0]);
         return;
     }
@@ -261,9 +231,8 @@ function runGame1Logic(stage, actor) {
 
 function runSubsequentGameLogic(stage, actor) {
     if (actor === 'me') {
-        // This was a ban or a pick
         if (myRole === 'banner') {
-            // Immediately update the local game state
+            // STREAMLINED: Immediately update local state
             gameState.bans.push(stage);
             gameState.available = gameState.available.filter(s => s !== stage);
             sendData({ type: 'ban', stage: stage });
@@ -275,11 +244,9 @@ function runSubsequentGameLogic(stage, actor) {
         }
     }
 
-    // Winner (banner) bans 3
     if (gameState.banCount < 3) {
         gameState.turn = 'banner';
     } 
-    // All 3 bans are in, it's the picker's turn
     else if (gameState.banCount === 3) {
         gameState.turn = 'picker';
     }
@@ -307,9 +274,7 @@ function renderStages() {
             btn.classList.add('banned');
             btn.disabled = true;
         } else {
-            // Check if it's my turn and I can click this
             if (myRole === gameState.turn) {
-                // For Game 1, can only click starter stages
                 if (gameState.type === 'game1' && !STARTERS.includes(stage)) {
                      btn.disabled = true;
                 } else {
@@ -321,7 +286,6 @@ function renderStages() {
             }
         }
 
-        // Put in correct list
         if (STARTERS.includes(stage)) {
             el.starterList.appendChild(btn);
         } else {
@@ -329,7 +293,6 @@ function renderStages() {
         }
     });
 
-    // Hide counterpick list during Game 1
     if (gameState.type === 'game1') {
         el.counterpickList.parentElement.classList.add('hidden');
     } else {
@@ -340,13 +303,11 @@ function renderStages() {
 function updateGame1Instructions() {
     let text = '';
     if (myRole === gameState.turn) {
-        // My turn
-        if (gameState.banCount === 0) text = "Your Turn: Ban 1 stage (1-2-1)";
-        else if (gameState.banCount === 1) text = "Your Turn: Ban 2 stages (1-2-1)";
-        else if (gameState.banCount === 2) text = "Your Turn: Ban 1 final stage (1-2-1)";
-        else if (gameState.banCount === 3) text = "Your Turn: Ban 1 final stage (1-2-1)";
+        if (gameState.banCount === 0) text = "Your Turn: Ban 1 stage";
+        else if (gameState.banCount === 1) text = "Your Turn: Ban 2 stages";
+        else if (gameState.banCount === 2) text = "Your Turn: Ban 1 final stage";
+        else if (gameState.banCount === 3) text = "Your Turn: Ban 1 final stage";
     } else {
-        // Opponent's turn
         text = `Waiting for Opponent (${gameState.turn}) to ban...`;
     }
     el.instructions.textContent = text;
@@ -355,18 +316,16 @@ function updateGame1Instructions() {
 function updateSubsequentGameInstructions() {
     let text = '';
     if (myRole === gameState.turn) {
-        // My turn
         if (myRole === 'banner') {
             text = `Your Turn: Ban ${3 - gameState.banCount} more stages.`;
         } else {
             text = "Your Turn: Pick one stage from the remaining list.";
         }
     } else {
-        // Opponent's turn
         if (gameState.turn === 'banner') {
-             text = "Waiting for Opponent (Winner) to ban 3 stages...";
+             text = "Waiting for Opponent to ban 3 stages...";
         } else {
-             text = "Waiting for Opponent (Loser) to pick a stage...";
+             text = "Waiting for Opponent to pick a stage...";
         }
     }
     el.instructions.textContent = text;
@@ -388,44 +347,34 @@ function showFinalStage(stage) {
 
 // --- 8. A P P   R E S E T ---
 el.resetBtn.addEventListener('click', () => {
-    // We only reset the UI part. The connection stays active.
-    // Send a 'reset' signal so the other player also resets
     sendData({ type: 'reset' });
     resetAppUI();
 });
 
-// Handle the reset signal from the opponent
 function handleResetSignal() {
     resetAppUI();
 }
 
-// Separate UI reset logic
 function resetAppUI() {
-    // Reset state
     myRole = '';
     gameState = { type: '', available: [], bans: [], turn: '', banCount: 0 };
     
-    // Reset UI
     el.finalStageArea.classList.add('hidden');
     el.stageArea.classList.add('hidden');
     el.setupArea.classList.remove('hidden');
     
-    // Only host can see setup controls
     if (isHost) {
         el.roleSelect.classList.remove('hidden');
-        el.rolePrompt.innerHTML = ''; // Clear prompts
+        el.rolePrompt.innerHTML = ''; 
     } else {
         el.roleSelect.classList.add('hidden');
         el.setupStatus.textContent = 'Waiting for Host to set up the next game...';
     }
 }
 
-// Add the new reset case to the message handler
 function handleMessage(data) {
     switch(data.type) {
         case 'setup':
-            // Received setup from Host
-            // This logic mirrors the init functions but triggers from the network message
             myRole = data.role;
             if (data.game === 'game1') {
                 initGame1(myRole);
@@ -434,7 +383,6 @@ function handleMessage(data) {
             }
             break;
         case 'ban':
-            // Opponent banned a stage
             gameState.bans.push(data.stage);
             gameState.available = gameState.available.filter(s => s !== data.stage);
             
@@ -445,11 +393,9 @@ function handleMessage(data) {
             }
             break;
         case 'pick':
-            // Opponent picked a stage (Subsequent Game)
             showFinalStage(data.stage);
             break;
         case 'reset':
-            // Opponent clicked 'Start Next Game'
             handleResetSignal();
             break;
     }
