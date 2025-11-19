@@ -29,13 +29,24 @@
 
         <div id="game-setup-area" class="hidden">
             <h2 id="setup-status">2. Game Setup</h2>
-            <div id="role-select">
-                <p>Are you playing Game 1 (Starters) or a Subsequent Game (Counterpicks)?</p>
-                <button id="game-1-btn" class="btn-full">Game 1 (1-2-1 Striking)</button>
-                <button id="subsequent-btn" class="btn-full">Subsequent Game (Winner Bans)</button>
+            
+            <div id="initial-setup">
+                <p>Select Mode:</p>
+                <button id="game-1-btn" class="btn-full">Start Match (Game 1)</button>
             </div>
 
-            <div id="role-prompt"></div>
+            <div id="subsequent-setup" class="hidden">
+                <p class="highlight-text">Next Game Setup</p>
+                <p>Did you win the previous game?</p>
+                <button id="host-won" class="btn-full">Yes, I Won (Banner)</button>
+                <button id="client-won" class="btn-full">No, I Lost (Picker)</button>
+            </div>
+
+            <div id="role-prompt" class="hidden">
+                <p>Who is banning first?</p>
+                <button id="host-strikes-first">I Ban First</button>
+                <button id="client-strikes-first">Opponent Bans First</button>
+            </div>
         </div>
         
         <div id="stage-select-area" class="hidden">
@@ -54,9 +65,14 @@
         </div>
 
         <div id="final-stage" class="hidden">
-            <h2>🎉 Final Stage Selected! 🎉</h2>
+            <h2>🎉 Play on this Stage: 🎉</h2>
             <p id="final-stage-name"></p>
-            <button id="reset-btn" class="btn-full">Start Next Game</button>
+            
+            <hr>
+            
+            <p><strong>Match Options</strong></p>
+            <button id="next-game-btn" class="btn-full">Next Game (Counterpick)</button>
+            <button id="rematch-btn" class="btn-full btn-secondary">Rematch / New Set (Reset All)</button>
         </div>
 
     </div>
