@@ -167,14 +167,9 @@ function initGame1(role) {
     gameState.type = 'game1';
     gameState.available = [...STARTERS];
     gameState.bans = [];
-    // Game 1 Logic: 
-    // 0 Bans: Striker 1 bans 1
-    // 1 Ban:  Striker 2 bans 1
-    // 2 Bans: Striker 2 bans 1
-    // 3 Bans: Striker 1 PICKS winner
+    // Start: 5 stages available -> Striker 1's turn
     gameState.turn = 'striker_1'; 
-    gameState.banCount = 0; 
-
+    
     renderStages();
     updateGame1Instructions();
 }
@@ -187,9 +182,6 @@ function initSubsequentGame(role) {
     gameState.type = 'subsequent';
     gameState.available = [...FULL_STAGE_LIST];
     gameState.bans = [];
-    // Game 2+ Logic:
-    // 0-2 Bans: Winner bans 3
-    // 3 Bans: Loser picks 1
     gameState.banCount = 0; 
     gameState.turn = 'banner'; 
 
@@ -197,40 +189,41 @@ function initSubsequentGame(role) {
     updateSubsequentGameInstructions();
 }
 
-// --- 6. G A M E   L O G I C (STRICT MODE) ---
+// --- 6. G A M E   L O G I C (FIXED) ---
 
 function runGame1Logic(stage, actor) {
-    // This function runs whenever a stage button is clicked (by me or opponent)
-    
-    // PHASE 1, 2, 3: BANNING (When banCount is 0, 1, or 2)
-    if (gameState.banCount < 3) {
-        if (actor === 'me') {
-            sendData({ type: 'ban', stage: stage });
-        }
-        // Update State
-        gameState.bans.push(stage);
-        gameState.available = gameState.available.filter(s => s !== stage);
-        gameState.banCount++;
-    }
-    // PHASE 4: PICKING (When banCount is 3)
-    else if (gameState.banCount === 3) {
-        // This click determines the winner
+    const remainingCount = gameState.available.length;
+
+    // --- FINAL STEP: PICKING (2 Stages Left) ---
+    if (remainingCount === 2) {
+        // If we are here, this click is a PICK, not a BAN.
         if (actor === 'me') {
             sendData({ type: 'pick', stage: stage });
         }
         showFinalStage(stage);
-        return; // Stop here
+        return;
     }
 
-    // Determine Next Turn based on new Ban Count
-    if (gameState.banCount === 1) { 
-        gameState.turn = 'striker_2';
+    // --- NORMAL STEP: BANNING (5, 4, or 3 Stages Left) ---
+    if (actor === 'me') {
+        sendData({ type: 'ban', stage: stage });
     }
-    else if (gameState.banCount === 2) {
-        gameState.turn = 'striker_2'; // Striker 2 bans twice in a row
+    
+    // Update State
+    gameState.bans.push(stage);
+    gameState.available = gameState.available.filter(s => s !== stage);
+    
+    // Determine Next Turn based on NEW remaining count
+    const newRemaining = gameState.available.length;
+    
+    if (newRemaining === 4) {
+        gameState.turn = 'striker_2'; // S1 banned 1, now S2's turn
+    } 
+    else if (newRemaining === 3) {
+        gameState.turn = 'striker_2'; // S2 banned 1, still S2's turn
     }
-    else if (gameState.banCount === 3) {
-        gameState.turn = 'striker_1'; // Striker 1 returns to PICK
+    else if (newRemaining === 2) {
+        gameState.turn = 'striker_1'; // S2 banned 2nd stage, now S1 picks
     }
     
     renderStages();
@@ -241,7 +234,6 @@ function runSubsequentGameLogic(stage, actor) {
     // PHASE 1: BANNING (Winner bans 3)
     if (gameState.banCount < 3) {
         if (actor === 'me') {
-            // Only 'banner' can click here, handled by renderStages
             sendData({ type: 'ban', stage: stage });
         }
         gameState.bans.push(stage);
@@ -288,8 +280,8 @@ function renderStages() {
         } else {
             // Check if it's my turn
             if (myRole === gameState.turn) {
-                // Ensure I'm clicking valid stages for Game 1
                 let canClick = true;
+                // Ensure I'm clicking valid stages for Game 1
                 if (gameState.type === 'game1' && !STARTERS.includes(stage)) canClick = false;
                 
                 if (canClick) {
@@ -319,15 +311,15 @@ function renderStages() {
 
 function updateGame1Instructions() {
     let text = '';
+    const remaining = gameState.available.length;
+    
     if (myRole === gameState.turn) {
-        // Custom text for the final step (Picking)
-        if (gameState.banCount === 3) text = "Final Step: PICK the stage you want to play!";
-        else if (gameState.banCount === 0) text = "Your Turn: Ban 1 stage";
-        else if (gameState.banCount === 1) text = "Your Turn: Ban 2 stages (1st Ban)";
-        else if (gameState.banCount === 2) text = "Your Turn: Ban 2 stages (2nd Ban)";
+        if (remaining === 2) text = "Final Step: PICK the stage you want to play!";
+        else if (remaining === 5) text = "Your Turn: Ban 1 stage";
+        else if (remaining === 4) text = "Your Turn: Ban 2 stages (1st Ban)";
+        else if (remaining === 3) text = "Your Turn: Ban 2 stages (2nd Ban)";
     } else {
-        // Opponent's turn
-        if (gameState.banCount === 3) text = "Waiting for Opponent to PICK the stage...";
+        if (remaining === 2) text = "Waiting for Opponent to PICK the stage...";
         else text = `Waiting for Opponent (${gameState.turn}) to ban...`;
     }
     el.instructions.textContent = text;
@@ -367,13 +359,11 @@ function showFinalStage(stage) {
 
 // --- 8. A P P   F L O W   C O N T R O L ---
 
-// "Next Game" Button
 el.nextGameBtn.addEventListener('click', () => {
     sendData({ type: 'next_game' });
     setupNextGameUI();
 });
 
-// "Rematch / Reset" Button
 el.rematchBtn.addEventListener('click', () => {
     sendData({ type: 'rematch' });
     resetToGame1Setup();
@@ -409,7 +399,6 @@ function handleMessage(data) {
 }
 
 function setupNextGameUI() {
-    // Reset state but keep connection
     myRole = '';
     gameState = { type: '', available: [], bans: [], turn: '', banCount: 0 };
     
@@ -417,7 +406,6 @@ function setupNextGameUI() {
     el.stageArea.classList.add('hidden');
     el.setupArea.classList.remove('hidden');
     
-    // Show the "Next Game" specific controls
     if (isHost) {
         el.initialSetup.classList.add('hidden');
         el.subsequentSetup.classList.remove('hidden');
@@ -429,7 +417,6 @@ function setupNextGameUI() {
 }
 
 function resetToGame1Setup() {
-    // Full Reset
     myRole = '';
     gameState = { type: '', available: [], bans: [], turn: '', banCount: 0 };
     
@@ -437,7 +424,6 @@ function resetToGame1Setup() {
     el.stageArea.classList.add('hidden');
     el.setupArea.classList.remove('hidden');
     
-    // Show Game 1 controls
     if (isHost) {
         el.initialSetup.classList.remove('hidden');
         el.subsequentSetup.classList.add('hidden');
