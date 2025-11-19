@@ -66,7 +66,7 @@ const el = {
 
 el.hostBtn.addEventListener('click', () => {
     const newRoomId = 'ssbu-' + Math.random().toString(36).substr(2, 6);
-    peer = new Peer(newRoomId); // Simple default settings
+    peer = new Peer(newRoomId); 
     
     peer.on('open', (id) => {
         el.roomId.textContent = id;
@@ -105,8 +105,6 @@ function setupConnection(connection) {
     el.connStatus.textContent = '✅ Opponent Connected!';
     el.connArea.classList.add('hidden');
     el.setupArea.classList.remove('hidden');
-
-    // Reset to initial state
     resetToGame1Setup();
 
     conn.on('data', (data) => {
@@ -169,6 +167,11 @@ function initGame1(role) {
     gameState.type = 'game1';
     gameState.available = [...STARTERS];
     gameState.bans = [];
+    // Game 1 Logic: 
+    // 0 Bans: Striker 1 bans 1
+    // 1 Ban:  Striker 2 bans 1
+    // 2 Bans: Striker 2 bans 1
+    // 3 Bans: Striker 1 PICKS winner
     gameState.turn = 'striker_1'; 
     gameState.banCount = 0; 
 
@@ -184,6 +187,9 @@ function initSubsequentGame(role) {
     gameState.type = 'subsequent';
     gameState.available = [...FULL_STAGE_LIST];
     gameState.bans = [];
+    // Game 2+ Logic:
+    // 0-2 Bans: Winner bans 3
+    // 3 Bans: Loser picks 1
     gameState.banCount = 0; 
     gameState.turn = 'banner'; 
 
@@ -191,39 +197,40 @@ function initSubsequentGame(role) {
     updateSubsequentGameInstructions();
 }
 
-// --- 6. G A M E   L O G I C ---
+// --- 6. G A M E   L O G I C (STRICT MODE) ---
 
 function runGame1Logic(stage, actor) {
-    // Special case for the final step: Picking the winner instead of banning
-    if (gameState.available.length === 2) {
-        // If we are here, there are 2 stages left.
-        // This click represents the PICK (the Winner), not a Ban.
+    // This function runs whenever a stage button is clicked (by me or opponent)
+    
+    // PHASE 1, 2, 3: BANNING (When banCount is 0, 1, or 2)
+    if (gameState.banCount < 3) {
+        if (actor === 'me') {
+            sendData({ type: 'ban', stage: stage });
+        }
+        // Update State
+        gameState.bans.push(stage);
+        gameState.available = gameState.available.filter(s => s !== stage);
+        gameState.banCount++;
+    }
+    // PHASE 4: PICKING (When banCount is 3)
+    else if (gameState.banCount === 3) {
+        // This click determines the winner
         if (actor === 'me') {
             sendData({ type: 'pick', stage: stage });
         }
         showFinalStage(stage);
-        return;
+        return; // Stop here
     }
 
-    // Normal Striking/Banning Logic
-    if (actor === 'me') {
-        gameState.bans.push(stage); 
-        gameState.available = gameState.available.filter(s => s !== stage);
-        sendData({ type: 'ban', stage: stage });
-    }
-    
-    gameState.banCount++;
-
-    // P1 (1) -> P2 (2) -> P1 (Pick)
+    // Determine Next Turn based on new Ban Count
     if (gameState.banCount === 1) { 
         gameState.turn = 'striker_2';
     }
     else if (gameState.banCount === 2) {
-        gameState.turn = 'striker_2'; 
+        gameState.turn = 'striker_2'; // Striker 2 bans twice in a row
     }
     else if (gameState.banCount === 3) {
-        // It is now Striker 1's turn to PICK from the remaining 2
-        gameState.turn = 'striker_1';
+        gameState.turn = 'striker_1'; // Striker 1 returns to PICK
     }
     
     renderStages();
@@ -231,23 +238,29 @@ function runGame1Logic(stage, actor) {
 }
 
 function runSubsequentGameLogic(stage, actor) {
-    if (actor === 'me') {
-        if (myRole === 'banner') {
-            gameState.bans.push(stage);
-            gameState.available = gameState.available.filter(s => s !== stage);
+    // PHASE 1: BANNING (Winner bans 3)
+    if (gameState.banCount < 3) {
+        if (actor === 'me') {
+            // Only 'banner' can click here, handled by renderStages
             sendData({ type: 'ban', stage: stage });
-            gameState.banCount++;
-        } else if (myRole === 'picker') {
-            sendData({ type: 'pick', stage: stage });
-            showFinalStage(stage);
-            return;
         }
+        gameState.bans.push(stage);
+        gameState.available = gameState.available.filter(s => s !== stage);
+        gameState.banCount++;
+    }
+    // PHASE 2: PICKING (Loser picks 1)
+    else if (gameState.banCount === 3) {
+        if (actor === 'me') {
+            sendData({ type: 'pick', stage: stage });
+        }
+        showFinalStage(stage);
+        return;
     }
 
+    // Determine Turn
     if (gameState.banCount < 3) {
         gameState.turn = 'banner';
-    } 
-    else if (gameState.banCount === 3) {
+    } else {
         gameState.turn = 'picker';
     }
     
@@ -275,7 +288,7 @@ function renderStages() {
         } else {
             // Check if it's my turn
             if (myRole === gameState.turn) {
-                // Determine if we can click
+                // Ensure I'm clicking valid stages for Game 1
                 let canClick = true;
                 if (gameState.type === 'game1' && !STARTERS.includes(stage)) canClick = false;
                 
@@ -310,8 +323,8 @@ function updateGame1Instructions() {
         // Custom text for the final step (Picking)
         if (gameState.banCount === 3) text = "Final Step: PICK the stage you want to play!";
         else if (gameState.banCount === 0) text = "Your Turn: Ban 1 stage";
-        else if (gameState.banCount === 1) text = "Your Turn: Ban 2 stages";
-        else if (gameState.banCount === 2) text = "Your Turn: Ban 1 final stage";
+        else if (gameState.banCount === 1) text = "Your Turn: Ban 2 stages (1st Ban)";
+        else if (gameState.banCount === 2) text = "Your Turn: Ban 2 stages (2nd Ban)";
     } else {
         // Opponent's turn
         if (gameState.banCount === 3) text = "Waiting for Opponent to PICK the stage...";
@@ -377,9 +390,6 @@ function handleMessage(data) {
             }
             break;
         case 'ban':
-            gameState.bans.push(data.stage);
-            gameState.available = gameState.available.filter(s => s !== data.stage);
-            
             if (gameState.type === 'game1') {
                 runGame1Logic(data.stage, 'opponent');
             } else {
@@ -414,7 +424,7 @@ function setupNextGameUI() {
     } else {
         el.initialSetup.classList.add('hidden');
         el.subsequentSetup.classList.add('hidden');
-        el.setupStatus.textContent = 'Waiting for Host to set up Game ' + (gameState.gameCount ? gameState.gameCount + 1 : 2) + '...';
+        el.setupStatus.textContent = 'Waiting for Host to set up Game...';
     }
 }
 
