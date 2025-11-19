@@ -123,6 +123,7 @@ input[type="text"] {
     color: #333;
     font-weight: 500;
     transition: all 0.2s;
+    min-width: 120px; /* ensure buttons are easy to hit */
 }
 
 /* Keep bans visible but clearly marked */
@@ -179,7 +180,7 @@ input[type="text"] {
 input[type="text"] {
     width: 100%;
     box-sizing: border-box;
-    padding: 14px 15px; /* Slightly larger for easier tapping */
+    padding: 14px 15px; 
     font-size: 1.1rem;
     margin: 8px 0;
 }
