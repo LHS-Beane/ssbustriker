@@ -26,11 +26,23 @@ h1, h2 {
     margin-top: 0;
 }
 
+hr {
+    border: 0;
+    border-top: 1px solid #eee;
+    margin: 20px 0;
+}
+
 small {
     color: #555;
     display: inline-block;
     margin-top: -0.5rem;
     margin-bottom: 0.5rem;
+}
+
+.highlight-text {
+    font-weight: bold;
+    font-size: 1.2rem;
+    color: #007bff;
 }
 
 /* --- Layout --- */
@@ -76,6 +88,13 @@ button:disabled {
     opacity: 0.7;
 }
 
+.btn-secondary {
+    background-color: #6c757d;
+}
+.btn-secondary:hover {
+    background-color: #5a6268;
+}
+
 input[type="text"] {
     padding: 12px;
     font-size: 1rem;
@@ -103,24 +122,28 @@ input[type="text"] {
     background-color: #f9f9f9;
     color: #333;
     font-weight: 500;
+    transition: all 0.2s;
 }
 
+/* Keep bans visible but clearly marked */
 .stage-btn.banned {
     background-color: #ffebee;
-    border-color: #e57373;
+    border-color: #ef9a9a;
     color: #c62828;
     text-decoration: line-through;
-    opacity: 0.6;
+    opacity: 0.7; 
 }
 
 .stage-btn.selectable {
     border-color: #007bff;
     background-color: #e6f2ff;
     cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .stage-btn.selectable:hover {
     background-color: #cce4ff;
+    transform: translateY(-2px);
 }
 
 /* --- Statuses --- */
@@ -134,6 +157,7 @@ input[type="text"] {
     font-size: 1.1rem;
     font-weight: 600;
     color: #d9534f;
+    min-height: 1.5rem;
 }
 
 #final-stage {
@@ -155,7 +179,7 @@ input[type="text"] {
 input[type="text"] {
     width: 100%;
     box-sizing: border-box;
-    padding: 12px 15px;
+    padding: 14px 15px; /* Slightly larger for easier tapping */
     font-size: 1.1rem;
     margin: 8px 0;
 }
