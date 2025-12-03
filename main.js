@@ -47,11 +47,11 @@ const ICE_CONFIG = {
 // 2. GLOBAL STATE + LOCAL STORAGE
 // ===============================
 
-const PERSIST_KEY = "ssbu_stage_state_v3";
+const PERSIST_KEY = "ssbu_stage_state_v4"; // bump version to avoid old schema conflicts
 
 function createDefaultGameState() {
   return {
-    type: "",           
+    type: "",           // '', 'game1', 'subsequent'
     available: [],
     bans: [],
     turn: "",
@@ -60,11 +60,12 @@ function createDefaultGameState() {
 
     teamNames: { home: "Home", away: "Away" },
 
+    // Crew battle: 4 players per team, each starting with 3 stocks
     crew: {
-      homeStocks: 12,
-      awayStocks: 12,
-      homePlayerStocks: 3,
-      awayPlayerStocks: 3,
+      homePlayers: [3, 3, 3, 3], // Player 1–4 stocks
+      awayPlayers: [3, 3, 3, 3],
+      homeCurrent: 0,           // index 0..3
+      awayCurrent: 0,
       round: 1
     }
   };
@@ -81,7 +82,13 @@ function saveState() {
 function loadState() {
   const data = localStorage.getItem(PERSIST_KEY);
   if (!data) return;
-  gameState = { ...createDefaultGameState(), ...JSON.parse(data) };
+  try {
+    const parsed = JSON.parse(data);
+    // Shallow merge to ensure new fields exist
+    gameState = { ...createDefaultGameState(), ...parsed };
+  } catch (e) {
+    console.warn("Failed to parse saved state", e);
+  }
 }
 
 // ===============================
@@ -144,7 +151,8 @@ function showSection(id) {
   document.querySelectorAll(".screen-section").forEach(sec =>
     sec.classList.add("hidden")
   );
-  document.getElementById(id).classList.remove("hidden");
+  const sec = document.getElementById(id);
+  if (sec) sec.classList.remove("hidden");
 
   document.querySelectorAll("#tabs .tab").forEach(tab => {
     tab.classList.toggle("active", tab.dataset.target === id);
@@ -216,6 +224,9 @@ el.saveTeamNamesBtn.onclick = () => {
 
   sendData({ type: "team-names", names: gameState.teamNames });
   saveState();
+
+  // Also refresh stock labels
+  setStockUI();
 
   showSection("game-setup-area");
 };
@@ -370,12 +381,24 @@ function renderStages() {
     } else if (gameState.finalStage) {
       btn.disabled = true;
     } else if (myRole === gameState.turn) {
-      btn.classList.add("selectable");
-      btn.onclick = () => onStageClick(stage);
+      let canClick = true;
+      if (gameState.type === "game1" && !STARTERS.includes(stage)) {
+        canClick = false;
+      }
+      if (canClick) {
+        btn.classList.add("selectable");
+        btn.onclick = () => onStageClick(stage);
+      } else {
+        btn.disabled = true;
+      }
+    } else {
+      btn.disabled = true;
     }
 
-    // Highlight last two pickable
-    if (gameState.available.length === 2 && !banned) {
+    // Highlight last two pickable in Game 1
+    if (gameState.type === "game1" &&
+        gameState.available.length === 2 &&
+        !banned) {
       btn.classList.add("pickable");
     }
 
@@ -398,7 +421,7 @@ function updateGame1Instructions() {
   if (myRole === gameState.turn) {
     if (remaining === 2) txt = "Final Step: PICK the stage.";
     else if (remaining === 5) txt = "Your Turn: Ban 1 stage.";
-    else txt = "Your Turn: Continue Banning.";
+    else txt = "Your Turn: Continue banning.";
   } else {
     if (remaining === 2) txt = "Opponent is picking the final stage...";
     else txt = "Waiting for opponent...";
@@ -411,8 +434,8 @@ function updateSubsequentGameInstructions() {
   const txt =
     (myRole === gameState.turn)
       ? (gameState.banCount < 3
-          ? `Ban ${3 - gameState.banCount} more`
-          : "Pick a stage")
+          ? `Ban ${3 - gameState.banCount} more stage(s).`
+          : "Pick one stage.")
       : "Waiting for opponent...";
   el.instructions.textContent = txt;
 }
@@ -428,47 +451,79 @@ function showFinalStage(stage) {
   showSection("final-stage");
   el.finalStageName.textContent = stage;
 
-  // preload stock info
+  // preload stock UI
   setStockUI();
 }
 
 // ===============================
-// 12. STOCK TRACKER
+// 12. CREW BATTLE (4 PLAYERS / TEAM)
 // ===============================
 
-function setStockUI() {
-  el.homeTeamLabel.textContent = gameState.teamNames.home;
-  el.awayTeamLabel.textContent = gameState.teamNames.away;
-
-  el.homeTeamStocks.textContent = gameState.crew.homeStocks;
-  el.awayTeamStocks.textContent = gameState.crew.awayStocks;
-
-  el.homePlayerStocks.textContent = gameState.crew.homePlayerStocks;
-  el.awayPlayerStocks.textContent = gameState.crew.awayPlayerStocks;
-
-  el.stockHeader.textContent = `Round ${gameState.crew.round}`;
+// Helper to compute total team stocks
+function totalStocks(arr) {
+  return arr.reduce((sum, s) => sum + Math.max(0, s), 0);
 }
 
+// Update all stock UI elements
+function setStockUI() {
+  const c = gameState.crew;
+  const homeArr = c.homePlayers;
+  const awayArr = c.awayPlayers;
+
+  const homeTotal = totalStocks(homeArr);
+  const awayTotal = totalStocks(awayArr);
+
+  const homeCurrentStocks =
+    c.homeCurrent < homeArr.length ? homeArr[c.homeCurrent] : 0;
+  const awayCurrentStocks =
+    c.awayCurrent < awayArr.length ? awayArr[c.awayCurrent] : 0;
+
+  // Label with team name and which player is active
+  const homeStatus = c.homeCurrent < 4 ? `Player ${c.homeCurrent + 1}/4` : "Eliminated";
+  const awayStatus = c.awayCurrent < 4 ? `Player ${c.awayCurrent + 1}/4` : "Eliminated";
+
+  el.homeTeamLabel.textContent = `${gameState.teamNames.home} (${homeStatus})`;
+  el.awayTeamLabel.textContent = `${gameState.teamNames.away} (${awayStatus})`;
+
+  el.homeTeamStocks.textContent = homeTotal;
+  el.awayTeamStocks.textContent = awayTotal;
+
+  el.homePlayerStocks.textContent = homeCurrentStocks;
+  el.awayPlayerStocks.textContent = awayCurrentStocks;
+
+  el.stockHeader.textContent =
+    `Crew Battle – Round ${c.round} | ` +
+    `${gameState.teamNames.home} ${homeStatus} vs ` +
+    `${gameState.teamNames.away} ${awayStatus}`;
+}
+
+// Adjust stock for one team, carryover between players
 function adjustStock(team) {
-  let c = gameState.crew;
+  const c = gameState.crew;
 
   if (team === "home") {
-    if (c.homeStocks <= 0) return;
-    c.homeStocks--;
-    c.homePlayerStocks--;
-    if (c.homePlayerStocks <= 0 && c.homeStocks > 0) {
-      c.homePlayerStocks = 3;
+    if (c.homeCurrent >= c.homePlayers.length) return; // already eliminated
+    if (c.homePlayers[c.homeCurrent] <= 0) return;     // cannot go negative
+
+    c.homePlayers[c.homeCurrent]--;
+
+    // If current player is KO'd and there are more players, advance
+    if (c.homePlayers[c.homeCurrent] === 0 && c.homeCurrent < c.homePlayers.length - 1) {
+      c.homeCurrent++;
     }
   } else {
-    if (c.awayStocks <= 0) return;
-    c.awayStocks--;
-    c.awayPlayerStocks--;
-    if (c.awayPlayerStocks <= 0 && c.awayStocks > 0) {
-      c.awayPlayerStocks = 3;
+    if (c.awayCurrent >= c.awayPlayers.length) return;
+    if (c.awayPlayers[c.awayCurrent] <= 0) return;
+
+    c.awayPlayers[c.awayCurrent]--;
+
+    if (c.awayPlayers[c.awayCurrent] === 0 && c.awayCurrent < c.awayPlayers.length - 1) {
+      c.awayCurrent++;
     }
   }
 
-  sendData({ type: "stock-update", crew: c });
+  // Broadcast full crew state
+  sendData({ type: "crew-update", crew: c });
   setStockUI();
   saveState();
 }
@@ -476,14 +531,10 @@ function adjustStock(team) {
 el.homeMinusStock.onclick = () => adjustStock("home");
 el.awayMinusStock.onclick = () => adjustStock("away");
 
+// Finish Round: only increments round counter, NO stock reset
 el.finishRoundBtn.onclick = () => {
   gameState.crew.round++;
-  gameState.crew.homeStocks = 12;
-  gameState.crew.awayStocks = 12;
-  gameState.crew.homePlayerStocks = 3;
-  gameState.crew.awayPlayerStocks = 3;
-
-  sendData({ type: "finish-round" });
+  sendData({ type: "crew-update", crew: gameState.crew });
   setStockUI();
   saveState();
 };
@@ -516,17 +567,9 @@ function handleMessage(data) {
       showFinalStage(data.stage);
       break;
 
-    case "stock-update":
+    case "crew-update":
+    case "stock-update": // legacy name, treat same
       gameState.crew = data.crew;
-      setStockUI();
-      break;
-
-    case "finish-round":
-      gameState.crew.round++;
-      gameState.crew.homeStocks = 12;
-      gameState.crew.awayStocks = 12;
-      gameState.crew.homePlayerStocks = 3;
-      gameState.crew.awayPlayerStocks = 3;
       setStockUI();
       break;
 
@@ -536,6 +579,8 @@ function handleMessage(data) {
 
     case "rematch":
       gameState = createDefaultGameState();
+      applyTeamNames();
+      setStockUI();
       showSection("game-setup-area");
       break;
   }
@@ -567,6 +612,8 @@ function setupNextGame() {
 el.rematchBtn.onclick = () => {
   sendData({ type: "rematch" });
   gameState = createDefaultGameState();
+  applyTeamNames();
+  setStockUI();
   showSection("game-setup-area");
   saveState();
 };
@@ -578,5 +625,6 @@ el.rematchBtn.onclick = () => {
 window.addEventListener("load", () => {
   loadState();
   applyTeamNames();
+  setStockUI();
   showSection("connection-area");
 });
