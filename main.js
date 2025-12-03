@@ -14,48 +14,52 @@ const COUNTERPICKS = [
 const FULL_STAGE_LIST = [...STARTERS, ...COUNTERPICKS];
 
 // ===============================
-// 1. GLOBAL STATE + PERSISTENCE
+// 1. TURN / STUN CONFIG (MOBILE FIX)
 // ===============================
-const PERSIST_KEY = "ssbu_stage_state_v2";
-
-// TURN / STUN CONFIG (Metered OpenRelay)
 const ICE_CONFIG = {
   iceServers: [
-    { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:openrelay.metered.ca:80" },
+    { urls: "stun:stun.relay.metered.ca:80" },
 
     {
-      urls: "turn:openrelay.metered.ca:80",
+      urls: "turn:global.relay.metered.ca:80",
       username: "d1c0795c35b8302516e6c4a6",
       credential: "4YoedDIk1I0HTBlU"
     },
     {
-      urls: "turn:openrelay.metered.ca:443",
+      urls: "turn:global.relay.metered.ca:80?transport=tcp",
       username: "d1c0795c35b8302516e6c4a6",
       credential: "4YoedDIk1I0HTBlU"
     },
     {
-      urls: "turn:openrelay.metered.ca:443?transport=tcp",
+      urls: "turn:global.relay.metered.ca:443",
+      username: "d1c0795c35b8302516e6c4a6",
+      credential: "4YoedDIk1I0HTBlU"
+    },
+    {
+      urls: "turns:global.relay.metered.ca:443?transport=tcp",
       username: "d1c0795c35b8302516e6c4a6",
       credential: "4YoedDIk1I0HTBlU"
     }
   ]
 };
 
+// ===============================
+// 2. GLOBAL STATE + LOCAL STORAGE
+// ===============================
+
+const PERSIST_KEY = "ssbu_stage_state_v3";
+
 function createDefaultGameState() {
   return {
-    // Stage selection
-    type: "",        // '', 'game1', 'subsequent'
+    type: "",           
     available: [],
     bans: [],
-    turn: "",        // 'striker_1', 'striker_2', 'banner', 'picker'
+    turn: "",
     banCount: 0,
     finalStage: null,
 
-    // Teams
     teamNames: { home: "Home", away: "Away" },
 
-    // Crew battle
     crew: {
       homeStocks: 12,
       awayStocks: 12,
@@ -66,45 +70,24 @@ function createDefaultGameState() {
   };
 }
 
-let peer;
-let conn;
-let isHost = false;
-let myRole = "";
 let gameState = createDefaultGameState();
+let peer, conn, isHost = false, myRole = "";
 
-// ---- Persistence helpers ----
+// Save to browser
 function saveState() {
-  try {
-    const toStore = {
-      type: gameState.type,
-      available: gameState.available,
-      bans: gameState.bans,
-      turn: gameState.turn,
-      banCount: gameState.banCount,
-      finalStage: gameState.finalStage,
-      teamNames: gameState.teamNames,
-      crew: gameState.crew
-    };
-    localStorage.setItem(PERSIST_KEY, JSON.stringify(toStore));
-  } catch (e) {
-    console.warn("Could not save state:", e);
-  }
+  localStorage.setItem(PERSIST_KEY, JSON.stringify(gameState));
 }
 
-function loadStateFromStorage() {
-  try {
-    const raw = localStorage.getItem(PERSIST_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw);
-  } catch (e) {
-    console.warn("Could not load from storage:", e);
-    return null;
-  }
+function loadState() {
+  const data = localStorage.getItem(PERSIST_KEY);
+  if (!data) return;
+  gameState = { ...createDefaultGameState(), ...JSON.parse(data) };
 }
 
 // ===============================
-// 2. DOM + TAB HANDLING
+// 3. DOM ELEMENTS
 // ===============================
+
 const el = {
   connArea: document.getElementById("connection-area"),
   connStatus: document.getElementById("conn-status"),
@@ -120,7 +103,6 @@ const el = {
   saveTeamNamesBtn: document.getElementById("save-team-names"),
 
   setupArea: document.getElementById("game-setup-area"),
-  setupStatus: document.getElementById("setup-status"),
   initialSetup: document.getElementById("initial-setup"),
   game1Btn: document.getElementById("game-1-btn"),
   subsequentSetup: document.getElementById("subsequent-setup"),
@@ -129,12 +111,12 @@ const el = {
   rolePrompt: document.getElementById("role-prompt"),
   hostStrikesFirstBtn: document.getElementById("host-strikes-first"),
   clientStrikesFirstBtn: document.getElementById("client-strikes-first"),
+  setupStatus: document.getElementById("setup-status"),
 
   stageArea: document.getElementById("stage-select-area"),
-  gameStatus: document.getElementById("game-status"),
-  instructions: document.getElementById("instructions"),
   starterList: document.getElementById("starter-list"),
   counterpickList: document.getElementById("counterpick-list"),
+  instructions: document.getElementById("instructions"),
 
   finalStageArea: document.getElementById("final-stage"),
   finalStageName: document.getElementById("final-stage-name"),
@@ -154,144 +136,133 @@ const el = {
   finishRoundBtn: document.getElementById("finish-round")
 };
 
-// Helper: Show one section + sync tab
+// ===============================
+// 4. TAB SYSTEM LOGIC
+// ===============================
+
 function showSection(id) {
-  document.querySelectorAll(".screen-section").forEach(sec => {
-    sec.classList.add("hidden");
-  });
-  const sec = document.getElementById(id);
-  if (sec) sec.classList.remove("hidden");
+  document.querySelectorAll(".screen-section").forEach(sec =>
+    sec.classList.add("hidden")
+  );
+  document.getElementById(id).classList.remove("hidden");
 
   document.querySelectorAll("#tabs .tab").forEach(tab => {
-    if (tab.dataset.target === id) tab.classList.add("active");
-    else tab.classList.remove("active");
+    tab.classList.toggle("active", tab.dataset.target === id);
   });
 }
 
-// Tab click events
 document.querySelectorAll("#tabs .tab").forEach(tab => {
   tab.addEventListener("click", () => {
-    const target = tab.dataset.target;
-    showSection(target);
+    showSection(tab.dataset.target);
   });
 });
 
 // ===============================
-// 3. NETWORKING (PeerJS + TURN)
+// 5. PEERJS CONNECTION (TURN ENABLED)
 // ===============================
-el.hostBtn.addEventListener("click", () => {
-  const newRoomId = "ssbu-" + Math.random().toString(36).substr(2, 6);
 
-  // Host with TURN/STUN config
-  peer = new Peer(newRoomId, { config: ICE_CONFIG });
+el.hostBtn.onclick = () => {
+  const roomId = "ssbu-" + Math.random().toString(36).substring(2, 8);
 
-  peer.on("open", (id) => {
+  peer = new Peer(roomId, { config: ICE_CONFIG });
+
+  peer.on("open", id => {
     el.roomId.textContent = id;
-    el.hostBtn.disabled = true;
-    el.clientControls.classList.add("hidden");
     el.connStatus.textContent = "Waiting for opponent...";
+    el.clientControls.classList.add("hidden");
     isHost = true;
   });
 
   peer.on("connection", setupConnection);
 
-  peer.on("error", (err) => {
-    alert("Error: " + err.type);
-    el.hostBtn.disabled = false;
-    isHost = false;
-  });
-});
+  peer.on("error", err => alert(err.type));
+};
 
-el.joinBtn.addEventListener("click", () => {
+el.joinBtn.onclick = () => {
   const joinId = el.joinIdInput.value.trim();
   if (!joinId) return;
 
-  // Join with TURN/STUN config (auto ID)
   peer = new Peer(undefined, { config: ICE_CONFIG });
 
   peer.on("open", () => {
     const connection = peer.connect(joinId);
     setupConnection(connection);
   });
-  peer.on("error", (err) => {
-    alert("Connection failed: " + err.message);
-  });
-});
+
+  peer.on("error", err => alert(err.type));
+};
 
 function setupConnection(connection) {
   conn = connection;
-  el.connStatus.textContent = "✅ Opponent Connected!";
+
+  el.connStatus.textContent = "Connected!";
   showSection("team-name-area");
 
   conn.on("data", handleMessage);
-  conn.on("close", () => {
-    alert("Opponent disconnected. Reloading.");
-    location.reload();
-  });
+  conn.on("close", () => location.reload());
 }
 
 function sendData(data) {
-  if (conn && conn.open) {
-    conn.send(data);
-  }
+  if (conn && conn.open) conn.send(data);
 }
 
 // ===============================
-// 4. TEAM NAMES
+// 6. TEAM NAMES
 // ===============================
-el.saveTeamNamesBtn.addEventListener("click", () => {
-  const home = el.homeTeamInput.value.trim() || "Home";
-  const away = el.awayTeamInput.value.trim() || "Away";
 
-  gameState.teamNames = { home, away };
-  saveState();
+el.saveTeamNamesBtn.onclick = () => {
+  gameState.teamNames.home = el.homeTeamInput.value.trim() || "Home";
+  gameState.teamNames.away = el.awayTeamInput.value.trim() || "Away";
+
   sendData({ type: "team-names", names: gameState.teamNames });
+  saveState();
 
   showSection("game-setup-area");
-});
+};
 
-function applyTeamNamesToInputs() {
+function applyTeamNames() {
   el.homeTeamInput.value = gameState.teamNames.home;
   el.awayTeamInput.value = gameState.teamNames.away;
 }
 
 // ===============================
-// 5. GAME SETUP LOGIC
+// 7. GAME SETUP
 // ===============================
-el.game1Btn.addEventListener("click", () => {
+
+el.game1Btn.onclick = () => {
   el.initialSetup.classList.add("hidden");
   el.rolePrompt.classList.remove("hidden");
-});
+};
 
-el.hostStrikesFirstBtn.addEventListener("click", () => {
+el.hostStrikesFirstBtn.onclick = () => {
   myRole = "striker_1";
   sendData({ type: "setup", game: "game1", role: "striker_2" });
   initGame1("striker_1");
-});
+};
 
-el.clientStrikesFirstBtn.addEventListener("click", () => {
+el.clientStrikesFirstBtn.onclick = () => {
   myRole = "striker_2";
   sendData({ type: "setup", game: "game1", role: "striker_1" });
   initGame1("striker_2");
-});
+};
 
-el.hostWonBtn.addEventListener("click", () => {
+el.hostWonBtn.onclick = () => {
   myRole = "banner";
   sendData({ type: "setup", game: "subsequent", role: "picker" });
   initSubsequentGame("banner");
-});
+};
 
-el.clientWonBtn.addEventListener("click", () => {
+el.clientWonBtn.onclick = () => {
   myRole = "picker";
   sendData({ type: "setup", game: "subsequent", role: "banner" });
   initSubsequentGame("picker");
-});
+};
 
 // ===============================
-// 6. INIT GAMES
+// 8. INIT GAMES
 // ===============================
+
 function initGame1(role) {
-  showSection("stage-select-area");
   myRole = role;
   gameState.type = "game1";
   gameState.available = [...STARTERS];
@@ -300,13 +271,13 @@ function initGame1(role) {
   gameState.banCount = 0;
   gameState.finalStage = null;
 
+  showSection("stage-select-area");
   renderStages();
   updateGame1Instructions();
   saveState();
 }
 
 function initSubsequentGame(role) {
-  showSection("stage-select-area");
   myRole = role;
   gameState.type = "subsequent";
   gameState.available = [...FULL_STAGE_LIST];
@@ -315,175 +286,140 @@ function initSubsequentGame(role) {
   gameState.turn = "banner";
   gameState.finalStage = null;
 
+  showSection("stage-select-area");
   renderStages();
   updateSubsequentGameInstructions();
   saveState();
 }
 
 // ===============================
-// 7. GAME LOGIC
+// 9. STAGE LOGIC
 // ===============================
-function runGame1Logic(stage, actor) {
+
+function onStageClick(stage) {
+  if (gameState.type === "game1")
+    runGame1Logic(stage, "me");
+  else
+    runSubsequentGameLogic(stage, "me");
+}
+
+function runGame1Logic(stage, source) {
   const remaining = gameState.available.length;
 
-  // Final step: PICK (2 stages left)
+  // FINAL PICK
   if (remaining === 2) {
-    if (actor === "me") {
-      sendData({ type: "pick", stage });
-    }
+    if (source === "me") sendData({ type: "pick", stage });
     showFinalStage(stage);
     return;
   }
 
-  // Otherwise BAN
-  if (actor === "me") {
-    sendData({ type: "ban", stage });
-  }
+  // BAN
+  if (source === "me") sendData({ type: "ban", stage });
 
   gameState.bans.push(stage);
   gameState.available = gameState.available.filter(s => s !== stage);
 
-  const newRemaining = gameState.available.length;
-  if (newRemaining === 4) {
-    gameState.turn = "striker_2";
-  } else if (newRemaining === 3) {
-    gameState.turn = "striker_2";
-  } else if (newRemaining === 2) {
-    gameState.turn = "striker_1";
-  }
+  const r = gameState.available.length;
+  if (r === 4) gameState.turn = "striker_2";
+  else if (r === 3) gameState.turn = "striker_2";
+  else if (r === 2) gameState.turn = "striker_1";
 
   renderStages();
   updateGame1Instructions();
   saveState();
 }
 
-function runSubsequentGameLogic(stage, actor) {
-  // Winner bans 3
+function runSubsequentGameLogic(stage, source) {
   if (gameState.banCount < 3) {
-    if (actor === "me") {
-      sendData({ type: "ban", stage });
-    }
+    if (source === "me") sendData({ type: "ban", stage });
+
     gameState.bans.push(stage);
     gameState.available = gameState.available.filter(s => s !== stage);
     gameState.banCount++;
-  } else if (gameState.banCount === 3) {
-    // Loser picks
-    if (actor === "me") {
-      sendData({ type: "pick", stage });
-    }
+  } else {
+    if (source === "me") sendData({ type: "pick", stage });
     showFinalStage(stage);
     return;
   }
 
-  if (gameState.banCount < 3) {
-    gameState.turn = "banner";
-  } else {
-    gameState.turn = "picker";
-  }
-
+  gameState.turn = gameState.banCount < 3 ? "banner" : "picker";
   renderStages();
   updateSubsequentGameInstructions();
   saveState();
 }
 
 // ===============================
-// 8. UI RENDERING
+// 10. UI: STAGES
 // ===============================
+
 function renderStages() {
   el.starterList.innerHTML = "";
   el.counterpickList.innerHTML = "";
 
-  const allStages = (gameState.type === "game1") ? STARTERS : FULL_STAGE_LIST;
+  let list = gameState.type === "game1" ? STARTERS : FULL_STAGE_LIST;
 
-  allStages.forEach(stage => {
+  list.forEach(stage => {
     const btn = document.createElement("button");
     btn.textContent = stage;
     btn.classList.add("stage-btn");
-    btn.dataset.stage = stage;
 
-    if (gameState.bans.includes(stage)) {
+    const banned = gameState.bans.includes(stage);
+    if (banned) {
       btn.classList.add("banned");
       btn.disabled = true;
-    } else {
-      // Highlight remaining stages on final pick step for Game 1
-      if (gameState.type === "game1" &&
-          gameState.available.length === 2 &&
-          !gameState.bans.includes(stage)) {
-        btn.classList.add("pickable");
-      }
-
-      if (myRole === gameState.turn && !gameState.finalStage) {
-        let canClick = true;
-        if (gameState.type === "game1" && !STARTERS.includes(stage)) {
-          canClick = false;
-        }
-        if (canClick) {
-          btn.classList.add("selectable");
-          btn.onclick = () => onStageClick(stage);
-        } else {
-          btn.disabled = true;
-        }
-      } else {
-        btn.disabled = true;
-      }
+    } else if (gameState.finalStage) {
+      btn.disabled = true;
+    } else if (myRole === gameState.turn) {
+      btn.classList.add("selectable");
+      btn.onclick = () => onStageClick(stage);
     }
 
-    if (STARTERS.includes(stage)) {
+    // Highlight last two pickable
+    if (gameState.available.length === 2 && !banned) {
+      btn.classList.add("pickable");
+    }
+
+    if (STARTERS.includes(stage))
       el.starterList.appendChild(btn);
-    } else {
+    else
       el.counterpickList.appendChild(btn);
-    }
   });
 
-  if (gameState.type === "game1") {
-    el.counterpickList.parentElement.classList.add("hidden");
-  } else {
-    el.counterpickList.parentElement.classList.remove("hidden");
-  }
+  el.counterpickList.parentElement.classList.toggle(
+    "hidden",
+    gameState.type === "game1"
+  );
 }
 
 function updateGame1Instructions() {
   const remaining = gameState.available.length;
-  let text = "";
+  let txt = "";
 
   if (myRole === gameState.turn) {
-    if (remaining === 2) text = "Final Step: Team 1 PICKS the stage they want to play!";
-    else if (remaining === 5) text = "Your Turn: Ban 1 stage.";
-    else if (remaining === 4) text = "Your Turn: Ban 2 stages (1st Ban).";
-    else if (remaining === 3) text = "Your Turn: Ban 2 stages (2nd Ban).";
+    if (remaining === 2) txt = "Final Step: PICK the stage.";
+    else if (remaining === 5) txt = "Your Turn: Ban 1 stage.";
+    else txt = "Your Turn: Continue Banning.";
   } else {
-    if (remaining === 2) text = "Waiting for Opponent to PICK the stage...";
-    else text = `Waiting for Opponent (${gameState.turn}) to ban...`;
+    if (remaining === 2) txt = "Opponent is picking the final stage...";
+    else txt = "Waiting for opponent...";
   }
 
-  el.instructions.textContent = text;
+  el.instructions.textContent = txt;
 }
 
 function updateSubsequentGameInstructions() {
-  let text = "";
-  if (myRole === gameState.turn) {
-    if (myRole === "banner") {
-      text = `Your Turn: Ban ${3 - gameState.banCount} more stages.`;
-    } else {
-      text = "Your Turn: Pick one stage from the remaining list.";
-    }
-  } else {
-    if (gameState.turn === "banner") {
-      text = "Waiting for Opponent to ban 3 stages...";
-    } else {
-      text = "Waiting for Opponent to pick a stage...";
-    }
-  }
-  el.instructions.textContent = text;
+  const txt =
+    (myRole === gameState.turn)
+      ? (gameState.banCount < 3
+          ? `Ban ${3 - gameState.banCount} more`
+          : "Pick a stage")
+      : "Waiting for opponent...";
+  el.instructions.textContent = txt;
 }
 
-function onStageClick(stage) {
-  if (gameState.type === "game1") {
-    runGame1Logic(stage, "me");
-  } else {
-    runSubsequentGameLogic(stage, "me");
-  }
-}
+// ===============================
+// 11. FINAL STAGE
+// ===============================
 
 function showFinalStage(stage) {
   gameState.finalStage = stage;
@@ -492,13 +428,14 @@ function showFinalStage(stage) {
   showSection("final-stage");
   el.finalStageName.textContent = stage;
 
-  // Pre-load stock UI
+  // preload stock info
   setStockUI();
 }
 
 // ===============================
-// 9. CREW BATTLE STOCK TRACKER
+// 12. STOCK TRACKER
 // ===============================
+
 function setStockUI() {
   el.homeTeamLabel.textContent = gameState.teamNames.home;
   el.awayTeamLabel.textContent = gameState.teamNames.away;
@@ -509,160 +446,137 @@ function setStockUI() {
   el.homePlayerStocks.textContent = gameState.crew.homePlayerStocks;
   el.awayPlayerStocks.textContent = gameState.crew.awayPlayerStocks;
 
-  el.stockHeader.textContent = `Crew Battle – Round ${gameState.crew.round}`;
+  el.stockHeader.textContent = `Round ${gameState.crew.round}`;
 }
 
-function changeStock(team) {
+function adjustStock(team) {
+  let c = gameState.crew;
+
   if (team === "home") {
-    if (gameState.crew.homeStocks <= 0) return;
-    gameState.crew.homeStocks--;
-    gameState.crew.homePlayerStocks--;
-    if (gameState.crew.homePlayerStocks <= 0 && gameState.crew.homeStocks > 0) {
-      gameState.crew.homePlayerStocks = 3;
+    if (c.homeStocks <= 0) return;
+    c.homeStocks--;
+    c.homePlayerStocks--;
+    if (c.homePlayerStocks <= 0 && c.homeStocks > 0) {
+      c.homePlayerStocks = 3;
     }
   } else {
-    if (gameState.crew.awayStocks <= 0) return;
-    gameState.crew.awayStocks--;
-    gameState.crew.awayPlayerStocks--;
-    if (gameState.crew.awayPlayerStocks <= 0 && gameState.crew.awayStocks > 0) {
-      gameState.crew.awayPlayerStocks = 3;
+    if (c.awayStocks <= 0) return;
+    c.awayStocks--;
+    c.awayPlayerStocks--;
+    if (c.awayPlayerStocks <= 0 && c.awayStocks > 0) {
+      c.awayPlayerStocks = 3;
     }
   }
 
-  sendData({ type: "stock-update", crew: gameState.crew });
+  sendData({ type: "stock-update", crew: c });
   setStockUI();
   saveState();
 }
 
-function nextRound() {
+el.homeMinusStock.onclick = () => adjustStock("home");
+el.awayMinusStock.onclick = () => adjustStock("away");
+
+el.finishRoundBtn.onclick = () => {
   gameState.crew.round++;
   gameState.crew.homeStocks = 12;
   gameState.crew.awayStocks = 12;
   gameState.crew.homePlayerStocks = 3;
   gameState.crew.awayPlayerStocks = 3;
 
+  sendData({ type: "finish-round" });
   setStockUI();
   saveState();
-}
-
-// Stock button bindings
-el.homeMinusStock.onclick = () => changeStock("home");
-el.awayMinusStock.onclick = () => changeStock("away");
-el.finishRoundBtn.onclick = () => {
-  sendData({ type: "finish-round" });
-  nextRound();
 };
 
 // ===============================
-// 10. APP FLOW CONTROL
+// 13. MESSAGE HANDLER
 // ===============================
-el.nextGameBtn.addEventListener("click", () => {
-  sendData({ type: "next_game" });
-  setupNextGameUI();
-});
-
-el.rematchBtn.addEventListener("click", () => {
-  sendData({ type: "rematch" });
-  resetToGame1Setup();
-});
 
 function handleMessage(data) {
   switch (data.type) {
+    case "team-names":
+      gameState.teamNames = data.names;
+      setStockUI();
+      break;
+
     case "setup":
       myRole = data.role;
-      if (data.game === "game1") {
-        initGame1(myRole);
-      } else if (data.game === "subsequent") {
-        initSubsequentGame(myRole);
-      }
+      if (data.game === "game1") initGame1(myRole);
+      else initSubsequentGame(myRole);
       break;
 
     case "ban":
-      if (gameState.type === "game1") {
+      if (gameState.type === "game1")
         runGame1Logic(data.stage, "opponent");
-      } else {
+      else
         runSubsequentGameLogic(data.stage, "opponent");
-      }
       break;
 
     case "pick":
       showFinalStage(data.stage);
       break;
 
-    case "next_game":
-      setupNextGameUI();
-      break;
-
-    case "rematch":
-      resetToGame1Setup();
-      break;
-
-    case "team-names":
-      gameState.teamNames = data.names;
-      applyTeamNamesToInputs();
-      setStockUI();
-      saveState();
-      break;
-
     case "stock-update":
       gameState.crew = data.crew;
       setStockUI();
-      saveState();
       break;
 
     case "finish-round":
-      nextRound();
+      gameState.crew.round++;
+      gameState.crew.homeStocks = 12;
+      gameState.crew.awayStocks = 12;
+      gameState.crew.homePlayerStocks = 3;
+      gameState.crew.awayPlayerStocks = 3;
+      setStockUI();
+      break;
+
+    case "next_game":
+      setupNextGame();
+      break;
+
+    case "rematch":
+      gameState = createDefaultGameState();
+      showSection("game-setup-area");
       break;
   }
+
+  saveState();
 }
 
-function setupNextGameUI() {
-  myRole = "";
+// ===============================
+// 14. FLOW CONTROL BUTTONS
+// ===============================
+
+el.nextGameBtn.onclick = () => {
+  sendData({ type: "next_game" });
+  setupNextGame();
+};
+
+function setupNextGame() {
   gameState.type = "";
-  gameState.available = [];
   gameState.bans = [];
-  gameState.turn = "";
   gameState.banCount = 0;
   gameState.finalStage = null;
-  saveState();
 
   showSection("game-setup-area");
-  if (isHost) {
-    el.initialSetup.classList.add("hidden");
-    el.subsequentSetup.classList.remove("hidden");
-  } else {
-    el.initialSetup.classList.add("hidden");
-    el.subsequentSetup.classList.add("hidden");
-    el.setupStatus.textContent = "Waiting for Host to set up Game...";
-  }
+  el.initialSetup.classList.add("hidden");
+  el.subsequentSetup.classList.remove("hidden");
+  saveState();
 }
 
-function resetToGame1Setup() {
-  myRole = "";
+el.rematchBtn.onclick = () => {
+  sendData({ type: "rematch" });
   gameState = createDefaultGameState();
-  saveState();
-
   showSection("game-setup-area");
-  if (isHost) {
-    el.initialSetup.classList.remove("hidden");
-    el.subsequentSetup.classList.add("hidden");
-    el.rolePrompt.classList.add("hidden");
-  } else {
-    el.initialSetup.classList.add("hidden");
-    el.subsequentSetup.classList.add("hidden");
-    el.rolePrompt.classList.add("hidden");
-    el.setupStatus.textContent = "Waiting for Host to start the match...";
-  }
-}
+  saveState();
+};
 
 // ===============================
-// 11. RESTORE FROM STORAGE
+// 15. LOAD STATE ON START
 // ===============================
+
 window.addEventListener("load", () => {
-  const storedState = loadStateFromStorage();
-  if (storedState) {
-    gameState = { ...createDefaultGameState(), ...storedState };
-  }
-  applyTeamNamesToInputs();
+  loadState();
+  applyTeamNames();
   showSection("connection-area");
 });
