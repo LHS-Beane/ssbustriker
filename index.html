@@ -9,74 +9,125 @@
 </head>
 <body>
 
-    <div class="container">
-        <h1>SSBU Stage Selector</h1>
-        <p>Based on Esports Ohio v6.3.3 Rules</p>
+<div class="container">
+    <h1>SSBU Stage Selector</h1>
+    <p>Based on Esports Ohio v6.3.3 Rules</p>
 
-        <div id="connection-area">
-            <h2 id="conn-status">1. Connect to Opponent</h2>
-            <div id="host-controls">
-                <button id="host-btn" class="btn-full">Create Room</button>
-                <p>Your Room ID: <strong id="room-id">...</strong></p>
-                <small>(Send this ID to your opponent)</small>
-            </div>
-            <div id="client-controls">
-                <p>Enter Opponent's Room ID:</p>
-                <input type="text" id="join-id-input" placeholder="Enter Room ID">
-                <button id="join-btn" class="btn-full">Join Room</button>
-            </div>
+    <!-- ============================ -->
+    <!-- 1. CONNECTION AREA           -->
+    <!-- ============================ -->
+    <div id="connection-area">
+        <h2 id="conn-status">1. Connect to Opponent</h2>
+        <div id="host-controls">
+            <button id="host-btn" class="btn-full">Create Room</button>
+            <p>Your Room ID: <strong id="room-id">...</strong></p>
+            <small>(Send this ID to your opponent)</small>
         </div>
-
-        <div id="game-setup-area" class="hidden">
-            <h2 id="setup-status">2. Game Setup</h2>
-            
-            <div id="initial-setup">
-                <p>Select Mode:</p>
-                <button id="game-1-btn" class="btn-full">Start Match (Game 1)</button>
-            </div>
-
-            <div id="subsequent-setup" class="hidden">
-                <p class="highlight-text">Next Game Setup</p>
-                <p>Did you win the previous game?</p>
-                <button id="host-won" class="btn-full">Yes, I Won (Banner)</button>
-                <button id="client-won" class="btn-full">No, I Lost (Picker)</button>
-            </div>
-
-            <div id="role-prompt" class="hidden">
-                <p>Who is banning first?</p>
-                <button id="host-strikes-first">I Ban First</button>
-                <button id="client-strikes-first">Opponent Bans First</button>
-            </div>
+        <div id="client-controls">
+            <p>Enter Opponent's Room ID:</p>
+            <input type="text" id="join-id-input" placeholder="Enter Room ID">
+            <button id="join-btn" class="btn-full">Join Room</button>
         </div>
-        
-        <div id="stage-select-area" class="hidden">
-            <h2 id="game-status">3. Stage Selection</h2>
-            <p id="instructions">Waiting for game to start...</p>
-            
-            <div class="stage-list-container">
-                <h3>Starter Stages</h3>
-                <div id="starter-list" class="stage-list"></div>
-            </div>
-            
-            <div class="stage-list-container">
-                <h3>Counterpick Stages</h3>
-                <div id="counterpick-list" class="stage-list"></div>
-            </div>
-        </div>
-
-        <div id="final-stage" class="hidden">
-            <h2>🎉 Play on this Stage: 🎉</h2>
-            <p id="final-stage-name"></p>
-            
-            <hr>
-            
-            <p><strong>Match Options</strong></p>
-            <button id="next-game-btn" class="btn-full">Next Game (Counterpick)</button>
-            <button id="rematch-btn" class="btn-full btn-secondary">Rematch / New Set (Reset All)</button>
-        </div>
-
     </div>
 
-    <script src="main.js"></script>
+    <!-- ============================ -->
+    <!-- 2. TEAM NAME ENTRY           -->
+    <!-- ============================ -->
+    <div id="team-name-area" class="hidden">
+        <h2>2. Enter Team Names</h2>
+
+        <label>Home Team:</label>
+        <input id="home-team-input" type="text" placeholder="Home Team Name">
+
+        <label>Away Team:</label>
+        <input id="away-team-input" type="text" placeholder="Away Team Name">
+
+        <button id="save-team-names" class="btn-full">Save & Continue</button>
+    </div>
+
+    <!-- ============================ -->
+    <!-- 3. GAME SETUP AREA           -->
+    <!-- ============================ -->
+    <div id="game-setup-area" class="hidden">
+        <h2 id="setup-status">3. Game Setup</h2>
+        
+        <div id="initial-setup">
+            <p>Select Mode:</p>
+            <button id="game-1-btn" class="btn-full">Start Match (Game 1)</button>
+        </div>
+
+        <div id="subsequent-setup" class="hidden">
+            <p class="highlight-text">Next Game Setup</p>
+            <p>Did you win the previous game?</p>
+            <button id="host-won" class="btn-full">Yes, I Won (Banner)</button>
+            <button id="client-won" class="btn-full">No, I Lost (Picker)</button>
+        </div>
+
+        <div id="role-prompt" class="hidden">
+            <p>Who is banning first?</p>
+            <button id="host-strikes-first">I Ban First</button>
+            <button id="client-strikes-first">Opponent Bans First</button>
+        </div>
+    </div>
+
+    <!-- ============================ -->
+    <!-- 4. STAGE SELECTOR            -->
+    <!-- ============================ -->
+    <div id="stage-select-area" class="hidden">
+        <h2 id="game-status">4. Stage Selection</h2>
+        <p id="instructions">Waiting for game to start...</p>
+
+        <div class="stage-list-container">
+            <h3>Starter Stages</h3>
+            <div id="starter-list" class="stage-list"></div>
+        </div>
+
+        <div class="stage-list-container">
+            <h3>Counterpick Stages</h3>
+            <div id="counterpick-list" class="stage-list"></div>
+        </div>
+    </div>
+
+    <!-- ============================ -->
+    <!-- 5. FINAL STAGE DISPLAY       -->
+    <!-- ============================ -->
+    <div id="final-stage" class="hidden">
+        <h2>🎉 Play on this Stage: 🎉</h2>
+        <p id="final-stage-name"></p>
+        <hr>
+
+        <p><strong>Match Options</strong></p>
+        <button id="next-game-btn" class="btn-full">Next Game (Counterpick)</button>
+        <button id="rematch-btn" class="btn-full btn-secondary">Rematch / New Set</button>
+    </div>
+
+    <!-- ============================ -->
+    <!-- 6. CREW BATTLE STOCK TRACKER -->
+    <!-- ============================ -->
+    <div id="stock-area" class="hidden">
+        <h2>Crew Battle Stock Tracker</h2>
+
+        <h3 id="stock-header"></h3>
+
+        <div class="stock-box">
+            <h3 id="home-team-label"></h3>
+            <p>Team Stocks: <span id="home-team-stocks"></span></p>
+            <p>Current Player Stocks: <span id="home-player-stocks"></span></p>
+            <button id="home-minus-stock" class="btn-full">Home -1 Stock</button>
+        </div>
+
+        <div class="stock-box">
+            <h3 id="away-team-label"></h3>
+            <p>Team Stocks: <span id="away-team-stocks"></span></p>
+            <p>Current Player Stocks: <span id="away-player-stocks"></span></p>
+            <button id="away-minus-stock" class="btn-full">Away -1 Stock</button>
+        </div>
+
+        <button id="finish-round" class="btn-full btn-secondary">End Round</button>
+    </div>
+
+</div>
+
+<script src="main.js"></script>
 </body>
 </html>
