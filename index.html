@@ -3,20 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SSBU Stage Selector</title>
+    <title>SSBU Match Manager</title>
     <link rel="stylesheet" href="style.css">
+    <!-- PeerJS (local copy in repo as peerjs.min.js) -->
     <script src="peerjs.min.js"></script>
 </head>
 <body>
 
 <div class="container">
-    <h1>SSBU Stage Selector</h1>
-    <p>Based on Esports Ohio v6.3.3 Rules</p>
+    <h1>SSBU Match Manager</h1>
+    <p class="subtitle">Esports Ohio – Stage + Crew Battle Helper</p>
 
-    <!-- ============================ -->
-    <!-- 1. CONNECTION AREA           -->
-    <!-- ============================ -->
-    <div id="connection-area">
+    <!-- TABS -->
+    <div id="tabs">
+        <div class="tab active" data-target="connection-area">Connect</div>
+        <div class="tab" data-target="team-name-area">Teams</div>
+        <div class="tab" data-target="stage-select-area">Stage Strike</div>
+        <div class="tab" data-target="stock-area">Stocks</div>
+    </div>
+
+    <!-- 1. CONNECTION AREA -->
+    <div id="connection-area" class="screen-section">
         <h2 id="conn-status">1. Connect to Opponent</h2>
         <div id="host-controls">
             <button id="host-btn" class="btn-full">Create Room</button>
@@ -30,10 +37,8 @@
         </div>
     </div>
 
-    <!-- ============================ -->
-    <!-- 2. TEAM NAME ENTRY           -->
-    <!-- ============================ -->
-    <div id="team-name-area" class="hidden">
+    <!-- 2. TEAM NAMES -->
+    <div id="team-name-area" class="screen-section hidden">
         <h2>2. Enter Team Names</h2>
 
         <label>Home Team:</label>
@@ -45,12 +50,10 @@
         <button id="save-team-names" class="btn-full">Save & Continue</button>
     </div>
 
-    <!-- ============================ -->
-    <!-- 3. GAME SETUP AREA           -->
-    <!-- ============================ -->
-    <div id="game-setup-area" class="hidden">
+    <!-- 3. GAME SETUP -->
+    <div id="game-setup-area" class="screen-section hidden">
         <h2 id="setup-status">3. Game Setup</h2>
-        
+
         <div id="initial-setup">
             <p>Select Mode:</p>
             <button id="game-1-btn" class="btn-full">Start Match (Game 1)</button>
@@ -65,17 +68,15 @@
 
         <div id="role-prompt" class="hidden">
             <p>Who is banning first?</p>
-            <button id="host-strikes-first">I Ban First</button>
-            <button id="client-strikes-first">Opponent Bans First</button>
+            <button id="host-strikes-first" class="btn-inline">I Ban First</button>
+            <button id="client-strikes-first" class="btn-inline">Opponent Bans First</button>
         </div>
     </div>
 
-    <!-- ============================ -->
-    <!-- 4. STAGE SELECTOR            -->
-    <!-- ============================ -->
-    <div id="stage-select-area" class="hidden">
+    <!-- 4. STAGE SELECTOR -->
+    <div id="stage-select-area" class="screen-section hidden">
         <h2 id="game-status">4. Stage Selection</h2>
-        <p id="instructions">Waiting for game to start...</p>
+        <p id="instructions" class="instructions">Waiting for game to start...</p>
 
         <div class="stage-list-container">
             <h3>Starter Stages</h3>
@@ -88,23 +89,18 @@
         </div>
     </div>
 
-    <!-- ============================ -->
-    <!-- 5. FINAL STAGE DISPLAY       -->
-    <!-- ============================ -->
-    <div id="final-stage" class="hidden">
+    <!-- 5. FINAL STAGE -->
+    <div id="final-stage" class="screen-section hidden">
         <h2>🎉 Play on this Stage: 🎉</h2>
         <p id="final-stage-name"></p>
         <hr>
-
         <p><strong>Match Options</strong></p>
         <button id="next-game-btn" class="btn-full">Next Game (Counterpick)</button>
         <button id="rematch-btn" class="btn-full btn-secondary">Rematch / New Set</button>
     </div>
 
-    <!-- ============================ -->
-    <!-- 6. CREW BATTLE STOCK TRACKER -->
-    <!-- ============================ -->
-    <div id="stock-area" class="hidden">
+    <!-- 6. STOCK TRACKER -->
+    <div id="stock-area" class="screen-section hidden">
         <h2>Crew Battle Stock Tracker</h2>
 
         <h3 id="stock-header"></h3>
@@ -131,3 +127,4 @@
 <script src="main.js"></script>
 </body>
 </html>
+
