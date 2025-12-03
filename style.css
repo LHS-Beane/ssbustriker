@@ -1,193 +1,225 @@
-/* style.css */
-body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    background-color: #f0f2f5;
-    color: #333;
-    display: grid;
-    place-items: center;
-    min-height: 100vh;
-    margin: 0;
-    padding: 1rem 0;
+/* GLOBAL */
+* {
     box-sizing: border-box;
 }
 
+body {
+    background: #0d0d0f;
+    color: #fafafa;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    margin: 0;
+    padding: 0;
+}
+
 .container {
-    background: #ffffff;
-    padding: 1.5rem;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-    width: 90%; 
-    max-width: 600px;
+    max-width: 900px;
+    margin: auto;
+    padding: 20px;
+}
+
+.subtitle {
     text-align: center;
+    color: #999;
+    margin-top: -10px;
+    margin-bottom: 15px;
 }
 
-h1, h2 {
-    color: #1a1a1a;
-    margin-top: 0;
+/* HEADERS */
+h1, h2, h3 {
+    text-align: center;
+    font-weight: 600;
+    margin-bottom: 12px;
 }
 
-hr {
-    border: 0;
-    border-top: 1px solid #eee;
-    margin: 20px 0;
+h1 {
+    font-size: 30px;
+    color: #6ab3ff;
 }
 
-small {
-    color: #555;
-    display: inline-block;
-    margin-top: -0.5rem;
-    margin-bottom: 0.5rem;
-}
-
-.highlight-text {
-    font-weight: bold;
-    font-size: 1.2rem;
-    color: #007bff;
-}
-
-/* --- Layout --- */
+/* HIDDEN CLASS */
 .hidden {
     display: none !important;
 }
 
-#host-controls, #client-controls, #role-select {
-    margin-bottom: 1rem;
-}
-
-#client-controls {
-    border-top: 1px solid #eee;
-    padding-top: 1rem;
-    margin-top: 1rem;
+/* TABS */
+#tabs {
     display: flex;
-    flex-direction: column;
-    align-items: center;
+    justify-content: space-evenly;
+    background: #111;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 15px;
 }
 
-/* --- Buttons & Inputs --- */
-button {
-    background-color: #007bff;
-    color: white;
-    border: none;
-    padding: 10px 15px;
-    border-radius: 5px;
-    font-size: 1rem;
-    font-weight: 500;
+.tab {
+    padding: 10px 5px;
+    color: #aaa;
     cursor: pointer;
-    transition: background-color 0.2s ease;
-    margin: 5px;
-    -webkit-tap-highlight-color: transparent;
+    flex: 1;
+    text-align: center;
+    font-size: 14px;
+    border-bottom: 3px solid transparent;
 }
 
-button:hover {
-    background-color: #0056b3;
+.tab.active {
+    color: #6ab3ff;
+    border-bottom: 3px solid #6ab3ff;
+    background: #161616;
 }
 
-button:disabled {
-    background-color: #c0c0c0;
-    cursor: not-allowed;
-    opacity: 0.7;
+/* BUTTONS */
+.btn-full {
+    width: 100%;
+    padding: 10px 14px;
+    background: #1e88e5;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    color: white;
+    margin-top: 8px;
+    cursor: pointer;
+}
+
+.btn-full:hover {
+    background: #1565c0;
 }
 
 .btn-secondary {
-    background-color: #6c757d;
-}
-.btn-secondary:hover {
-    background-color: #5a6268;
+    background: #3a3a3a;
 }
 
-input[type="text"] {
-    padding: 12px;
-    font-size: 1rem;
-    border: 1px solid #ccc;
-    border-radius: 5px;
-    margin-bottom: 10px;
+.btn-inline {
+    padding: 8px 12px;
+    background: #1e88e5;
+    border: none;
+    border-radius: 8px;
+    color: #fff;
+    margin: 5px;
+    cursor: pointer;
 }
 
-/* --- Stage List --- */
+/* INPUTS */
+input[type=text] {
+    width: 100%;
+    padding: 10px;
+    background: #1a1a1d;
+    color: #fafafa;
+    border: 1px solid #333;
+    border-radius: 6px;
+    margin-bottom: 12px;
+    font-size: 16px;
+}
+
+/* SECTIONS */
+.screen-section {
+    margin-top: 10px;
+}
+
+/* INSTRUCTIONS BANNER */
+.instructions {
+    background: #202024;
+    padding: 10px;
+    border-left: 4px solid #6ab3ff;
+    border-radius: 6px;
+    margin-bottom: 12px;
+}
+
+/* STAGE LISTS */
 .stage-list-container {
-    margin-bottom: 1.5rem;
+    margin-top: 12px;
 }
 
 .stage-list {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
     gap: 10px;
-    margin-top: 1rem;
+    margin-top: 8px;
 }
 
 .stage-btn {
-    padding: 12px 18px;
-    border: 2px solid #ddd;
-    background-color: #f9f9f9;
-    color: #333;
-    font-weight: 500;
-    transition: all 0.2s;
-    min-width: 120px; /* ensure buttons are easy to hit */
-}
-
-/* Keep bans visible but clearly marked */
-.stage-btn.banned {
-    background-color: #ffebee;
-    border-color: #ef9a9a;
-    color: #c62828;
-    text-decoration: line-through;
-    opacity: 0.7; 
-}
-
-.stage-btn.selectable {
-    border-color: #007bff;
-    background-color: #e6f2ff;
+    padding: 14px;
+    background: #1a1a1d;
+    border: 2px solid #333;
+    border-radius: 10px;
     cursor: pointer;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    color: #eee;
+    text-align: center;
+    font-size: 14px;
 }
 
 .stage-btn.selectable:hover {
-    background-color: #cce4ff;
-    transform: translateY(-2px);
+    background: #24242a;
 }
 
-/* --- Statuses --- */
-#conn-status, #setup-status, #game-status {
-    border-bottom: 2px solid #007bff;
-    padding-bottom: 8px;
-    margin-bottom: 1rem;
+.stage-btn.banned {
+    background: #4d0d0d;
+    border-color: #992424;
+    text-decoration: line-through;
+    color: #ffb3b3;
 }
 
-#instructions {
-    font-size: 1.1rem;
-    font-weight: 600;
-    color: #d9534f;
-    min-height: 1.5rem;
+.stage-btn.pickable {
+    border-color: #00ff66;
+    box-shadow: 0 0 10px #00ff6644;
 }
 
-#final-stage {
-    padding: 2rem;
-    background: #e6f7ff;
-    border: 2px solid #b3e0ff;
-    border-radius: 8px;
-}
-
+/* FINAL STAGE */
 #final-stage-name {
-    font-size: clamp(1.5rem, 5vw, 2.5rem);
+    font-size: 26px;
     font-weight: bold;
-    color: #0056b3;
-    word-wrap: break-word;
+    color: #00ffb3;
+    text-align: center;
+    margin: 20px 0;
+    animation: pop 0.5s ease-out;
 }
 
-/* --- Mobile Optimizations --- */
-.btn-full, 
-input[type="text"] {
-    width: 100%;
-    box-sizing: border-box;
-    padding: 14px 15px; 
-    font-size: 1.1rem;
-    margin: 8px 0;
+@keyframes pop {
+    0% { transform: scale(0.6); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
 }
 
-#role-prompt button {
-    width: auto;
-    padding: 10px 15px;
-    font-size: 1rem;
-    margin: 5px;
+/* STOCKS */
+.stock-box {
+    background: #1c1c21;
+    padding: 14px;
+    margin-top: 12px;
+    border-radius: 10px;
+    border: 1px solid #333;
+}
+
+.stock-box h3 {
+    color: #6ab3ff;
+    margin-bottom: 6px;
+}
+
+#stock-header {
+    text-align: center;
+    font-size: 18px;
+    margin-bottom: 10px;
+    color: #6ab3ff;
+}
+
+#home-team-stocks,
+#away-team-stocks {
+    font-size: 22px;
+    font-weight: bold;
+}
+
+#home-player-stocks,
+#away-player-stocks {
+    font-size: 18px;
+    color: #00ffb3;
+}
+
+.highlight-text {
+    text-align: center;
+    color: #ffeb3b;
+    margin-bottom: 6px;
+}
+
+/* MOBILE */
+@media (max-width: 600px) {
+    .stage-list {
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    }
 }
