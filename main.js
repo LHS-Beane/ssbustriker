@@ -18,6 +18,30 @@ const FULL_STAGE_LIST = [...STARTERS, ...COUNTERPICKS];
 // ===============================
 const PERSIST_KEY = "ssbu_stage_state_v2";
 
+// TURN / STUN CONFIG (Metered OpenRelay)
+const ICE_CONFIG = {
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:openrelay.metered.ca:80" },
+
+    {
+      urls: "turn:openrelay.metered.ca:80",
+      username: "d1c0795c35b8302516e6c4a6",
+      credential: "4YoedDIk1I0HTBlU"
+    },
+    {
+      urls: "turn:openrelay.metered.ca:443",
+      username: "d1c0795c35b8302516e6c4a6",
+      credential: "4YoedDIk1I0HTBlU"
+    },
+    {
+      urls: "turn:openrelay.metered.ca:443?transport=tcp",
+      username: "d1c0795c35b8302516e6c4a6",
+      credential: "4YoedDIk1I0HTBlU"
+    }
+  ]
+};
+
 function createDefaultGameState() {
   return {
     // Stage selection
@@ -153,11 +177,13 @@ document.querySelectorAll("#tabs .tab").forEach(tab => {
 });
 
 // ===============================
-// 3. NETWORKING (PeerJS)
+// 3. NETWORKING (PeerJS + TURN)
 // ===============================
 el.hostBtn.addEventListener("click", () => {
   const newRoomId = "ssbu-" + Math.random().toString(36).substr(2, 6);
-  peer = new Peer(newRoomId);
+
+  // Host with TURN/STUN config
+  peer = new Peer(newRoomId, { config: ICE_CONFIG });
 
   peer.on("open", (id) => {
     el.roomId.textContent = id;
@@ -180,7 +206,9 @@ el.joinBtn.addEventListener("click", () => {
   const joinId = el.joinIdInput.value.trim();
   if (!joinId) return;
 
-  peer = new Peer();
+  // Join with TURN/STUN config (auto ID)
+  peer = new Peer(undefined, { config: ICE_CONFIG });
+
   peer.on("open", () => {
     const connection = peer.connect(joinId);
     setupConnection(connection);
@@ -295,11 +323,10 @@ function initSubsequentGame(role) {
 // ===============================
 // 7. GAME LOGIC
 // ===============================
-
 function runGame1Logic(stage, actor) {
   const remaining = gameState.available.length;
 
-  // When 2 stages remain → this click is a PICK
+  // Final step: PICK (2 stages left)
   if (remaining === 2) {
     if (actor === "me") {
       sendData({ type: "pick", stage });
@@ -308,7 +335,7 @@ function runGame1Logic(stage, actor) {
     return;
   }
 
-  // Otherwise it's a BAN
+  // Otherwise BAN
   if (actor === "me") {
     sendData({ type: "ban", stage });
   }
@@ -465,7 +492,7 @@ function showFinalStage(stage) {
   showSection("final-stage");
   el.finalStageName.textContent = stage;
 
-  // Pre-load stock UI but stay on "Final Stage" tab
+  // Pre-load stock UI
   setStockUI();
 }
 
