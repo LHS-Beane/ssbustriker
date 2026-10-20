@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SSBU Stage & Crew Battle Manager</title>
+    <title>SSBU Stage Selector &amp; Crew Battle Manager</title>
 
     <link rel="stylesheet" href="style.css" />
     <script src="peerjs.min.js"></script>
@@ -15,16 +15,19 @@
     <!-- TOP TAB NAVIGATION -->
     <!-- =============================== -->
     <div id="tabs">
-        <div class="tab active" data-target="connection-area">Connect</div>
-        <div class="tab" data-target="team-name-area">Teams</div>
-        <div class="tab" data-target="stage-select-area">Stage Strike</div>
-        <div class="tab" data-target="stock-area">Stocks</div>
+        <div class="tab active" data-view="connect">Connect</div>
+        <div class="tab" data-view="teams">Teams</div>
+        <div class="tab" data-view="flow">Stage Strike</div>
+        <div class="tab" data-view="stocks">Stocks</div>
     </div>
 
     <div class="container">
 
         <h1>SSBU Match Manager</h1>
         <p>Esports Ohio — Stage Selection & Crew Battle Tracker</p>
+
+        <!-- Live connection status (visible on every screen once in a room) -->
+        <div id="net-banner" class="net-banner hidden"></div>
 
         <!-- =============================== -->
         <!-- 1. CONNECTION AREA -->
@@ -35,6 +38,7 @@
             <div id="host-controls">
                 <button id="host-btn" class="btn-full">Create Room</button>
                 <p>Your Room ID: <strong id="room-id">...</strong></p>
+                <p id="room-hint" class="hint hidden">Send this Room ID to the other coach. They enter it under &ldquo;Join Room&rdquo;.</p>
             </div>
 
             <div id="client-controls">
@@ -42,6 +46,9 @@
                 <input id="join-id-input" type="text" placeholder="Room ID" />
                 <button id="join-btn" class="btn-full">Join Room</button>
             </div>
+
+            <p id="conn-error" class="error-text hidden"></p>
+            <button id="leave-btn" class="btn-full btn-secondary hidden">Leave Room</button>
         </div>
 
         <!-- =============================== -->
@@ -92,7 +99,7 @@
         <!-- =============================== -->
         <div id="stage-select-area" class="screen-section hidden">
             <h2>4. Stage Selection</h2>
-            <p id="instructions">Waiting for setup...</p>
+            <p id="instructions" class="instructions">Waiting for setup...</p>
 
             <div class="stage-list-container">
                 <h3>Starter Stages</h3>
@@ -139,6 +146,7 @@
             </div>
 
             <button id="finish-round" class="btn-full btn-secondary">Finish Round</button>
+            <button id="crew-reset" class="btn-full btn-secondary hidden">New Crew Battle</button>
         </div>
 
     </div>

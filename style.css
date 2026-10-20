@@ -223,3 +223,49 @@ input[type=text] {
         grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
     }
 }
+
+/* TABS: locked until you are in a room */
+.tab.disabled {
+    opacity: 0.35;
+    pointer-events: none;
+}
+
+/* CONNECTION STATUS BANNER */
+.net-banner {
+    text-align: center;
+    padding: 8px 10px;
+    border-radius: 8px;
+    margin: 0 0 12px;
+    font-size: 14px;
+    background: #202024;
+    border: 1px solid #333;
+}
+.net-banner.connected { border-color: #00c853; color: #9effc4; }
+.net-banner.waiting,
+.net-banner.connecting,
+.net-banner.reconnecting { border-color: #ffb300; color: #ffe08a; }
+.net-banner.error { border-color: #e53935; color: #ffb3b3; }
+
+.error-text {
+    color: #ffb3b3;
+    background: #2a1010;
+    border: 1px solid #992424;
+    border-radius: 6px;
+    padding: 10px;
+}
+
+.hint {
+    color: #999;
+    font-size: 14px;
+}
+
+button:disabled {
+    cursor: not-allowed;
+}
+.btn-full:disabled {
+    opacity: 0.5;
+}
+
+.winner-text {
+    color: #ffeb3b;
+}
