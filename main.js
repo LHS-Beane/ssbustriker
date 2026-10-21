@@ -48,10 +48,13 @@ const ICE_CONFIG = {
 };
 
 // Timings (ms)
-const CONNECT_TIMEOUT = 15000;   // give up on a join attempt after this
-const HEARTBEAT_EVERY = 3000;    // ping the other device this often
-const HEARTBEAT_DEAD = 15000;    // treat the link as dead after this much silence
-const RETRY_MAX_DELAY = 10000;   // cap for reconnect backoff
+const CONNECT_TIMEOUT = 15000;   // give up on a first join attempt after this
+const HEARTBEAT_EVERY = 2000;    // ping the other device this often
+const HEARTBEAT_STALE = 7000;    // this much silence = "paused" (keep link, re-dial)
+const HEARTBEAT_DEAD = 45000;    // this much silence = link is dead, drop it
+const PROBE_EVERY = 2500;        // re-dial the host this often while paused
+const DIAL_TIMEOUT = 8000;       // give each re-dial this long to open
+const RETRY_MAX_DELAY = 5000;    // cap for reconnect backoff
 
 // ===============================
 // 2. GLOBAL STATE + LOCAL STORAGE
@@ -94,6 +97,7 @@ function createDefaultGameState() {
     roles: {},              // role -> 'host' | 'client'
     banCount: 0,
     finalStage: null,
+    history: [],            // [{ game, stage }] stages picked earlier in this set
 
     teamNames: { home: "Home", away: "Away" },
     crew: createDefaultCrew()
@@ -109,6 +113,7 @@ function normalizeState(s) {
   out.roles = { ...(s.roles || {}) };
   out.available = Array.isArray(s.available) ? [...s.available] : [];
   out.bans = Array.isArray(s.bans) ? [...s.bans] : [];
+  out.history = Array.isArray(s.history) ? [...s.history] : [];
   return out;
 }
 
@@ -154,6 +159,7 @@ function otherSide(side) { return side === "host" ? "client" : "host"; }
 
 const el = {
   netBanner: document.getElementById("net-banner"),
+  matchHistory: document.getElementById("match-history"),
   connArea: document.getElementById("connection-area"),
   connStatus: document.getElementById("conn-status"),
   connError: document.getElementById("conn-error"),
@@ -268,7 +274,7 @@ document.querySelectorAll("#tabs .tab").forEach(tab => {
 });
 
 function isConnected() { return !!(conn && conn.open); }
-function canAct() { return isConnected() && !pendingAction; }
+function canAct() { return isConnected() && !linkPaused && !pendingAction; }
 
 function setPending(on) {
   pendingAction = on;
@@ -288,6 +294,7 @@ function render() {
   renderStages();
   renderFinal();
   setStockUI();
+  renderHistory();
 
   let sectionId;
   if (!session || view === "connect") sectionId = "connection-area";
@@ -295,6 +302,16 @@ function render() {
   else if (view === "stocks") sectionId = "stock-area";
   else sectionId = FLOW_SECTIONS[gameState.phase] || "game-setup-area";
   showSection(sectionId);
+}
+
+function renderHistory() {
+  const h = gameState.history || [];
+  const show = !!session && h.length > 0;
+  el.matchHistory.classList.toggle("hidden", !show);
+  if (show) {
+    el.matchHistory.textContent =
+      "This set: " + h.map(x => `Game ${x.game} – ${x.stage}`).join(" · ");
+  }
 }
 
 function renderTabs() {
@@ -548,6 +565,7 @@ function runStrike(stage, fromSide) {
     if (s.available.length === 2) {                        // FINAL PICK
       s.finalStage = stage;
       s.phase = "final";
+      s.history.push({ game: s.gameNumber, stage });
       return true;
     }
     s.bans.push(stage);
@@ -567,6 +585,7 @@ function runStrike(stage, fromSide) {
     } else {
       s.finalStage = stage;
       s.phase = "final";
+      s.history.push({ game: s.gameNumber, stage });
     }
     return true;
   }
@@ -647,8 +666,15 @@ function renderStages() {
 }
 
 function stageInstructions(myTurn) {
+  const text = turnText(myTurn);
+  if (gameState.phase !== "final" && (!isConnected() || linkPaused)) {
+    return text + " — paused until the connection is back (the board below is the last known state).";
+  }
+  return text;
+}
+
+function turnText(myTurn) {
   if (gameState.phase === "final") return `Stage selected: ${gameState.finalStage}`;
-  if (!isConnected()) return "Waiting for the connection to come back…";
 
   const myRoles = Object.keys(gameState.roles).filter(r => gameState.roles[r] === mySide());
   const who = myRoles.length ? ` (You: ${ROLE_LABELS[myRoles[0]]})` : "";
@@ -772,15 +798,40 @@ el.crewResetBtn.onclick = () => requestAction({ kind: "crew-reset" });
 // ===============================
 // 12. PEERJS CONNECTION (TURN ENABLED, AUTO-RECONNECT)
 // ===============================
+//
+// Phones pause a web page as soon as you switch apps. When that happens we do
+// NOT throw the match away: both devices keep showing the last known board,
+// the link is marked "paused", and the joining device keeps re-dialing the
+// host every couple of seconds. The moment the host's page wakes up it
+// re-registers its Room ID and the next re-dial gets through.
+//
+// If the connection server still holds the host's old (frozen) registration,
+// the host temporarily registers as "<room>-b" instead. The joining device
+// always dials both names, so it finds the host either way.
 
 let peer = null;
-let conn = null;
+let conn = null;                 // the one live data connection
+let pendingConns = new Set();    // dial attempts / incoming links not open yet
 let outbox = [];
 let retryTimer = null;
 let retryAttempt = 0;
 let connectTimer = null;
 let heartbeatTimer = null;
+let probeTimer = null;
 let lastSeen = 0;
+let linkPaused = false;          // link exists but the other side went quiet
+let joiningRoomId = null;        // room being joined for the first time
+let unavailableIds = new Set();  // first join: names the server says don't exist
+let hostIdIndex = 0;             // 0 = "<room>", 1 = "<room>-b"
+let hostIdFlips = 0;
+let unhealthySince = 0;          // when the link last went paused/down
+let lastIncomingAt = 0;          // host: last time the opponent dialed in
+let selfHealAt = 0;              // host: last time we re-opened the room
+let selfHealDelay = 10000;
+let hadOpponent = false;
+
+const PAUSED_MSG =
+  "Opponent's device paused (they may have switched apps or locked their phone) — waiting for them to come back…";
 
 function setNet(state, text) {
   netStatus = { state, text };
@@ -794,15 +845,33 @@ function newRoomId() {
 function normalizeRoomId(raw) {
   let id = (raw || "").trim().toLowerCase().replace(/\s+/g, "");
   if (id && !id.startsWith("ssbu-")) id = "ssbu-" + id;
-  return id;
+  return id.replace(/-b$/, "");
+}
+
+function hostIdsFor(roomId) {
+  return [roomId, roomId + "-b"];
+}
+
+function closeQuietly(c) {
+  if (!c) return;
+  pendingConns.delete(c);
+  try { c.close(); } catch (e) {}
+}
+
+function closePending() {
+  [...pendingConns].forEach(closeQuietly);
+  pendingConns.clear();
 }
 
 function destroyPeer() {
   clearTimeout(connectTimer);
+  linkPaused = false;
   stopHeartbeat();
+  stopProbing();
+  closePending();
   const c = conn;
   conn = null;
-  if (c) { try { c.close(); } catch (e) {} }
+  closeQuietly(c);
   const p = peer;
   peer = null;
   if (p) { try { p.destroy(); } catch (e) {} }
@@ -816,25 +885,27 @@ function scheduleRetry(fn) {
 }
 
 // ---------- HOST ----------
-// resume = true when re-opening a room we already own (refresh / drop).
-function startHost(roomId, resume) {
+// resume = true when re-opening a room we already own (refresh / drop / wake).
+function startHost(roomId, resume, idIndex = 0) {
   clearTimeout(retryTimer);
   destroyPeer();
+  hostIdIndex = idIndex;
 
-  const p = new Peer(roomId, { config: ICE_CONFIG });
+  const p = new Peer(hostIdsFor(roomId)[idIndex], { config: ICE_CONFIG });
   peer = p;
 
-  p.on("open", id => {
+  p.on("open", () => {
     if (p !== peer) return;
     retryAttempt = 0;
+    hostIdFlips = 0;
     connError = "";
-    session = { side: "host", roomId: id };
+    session = { side: "host", roomId };
     saveSession();
     if (!resume) {
       view = "connect";
       setNet("waiting", "Room created — waiting for opponent to join…");
     } else if (!isConnected()) {
-      setNet("waiting", "Waiting for opponent to rejoin…");
+      setNet("waiting", "Back online — waiting for opponent to reconnect…");
     } else {
       setNet("connected", "Connected to opponent");
     }
@@ -842,18 +913,17 @@ function startHost(roomId, resume) {
 
   p.on("connection", c => {
     if (p !== peer) return;
-    attachConnection(c);
+    lastIncomingAt = Date.now();
+    wireConnection(c);
   });
 
   p.on("disconnected", () => {
-    // Lost the broker (not the opponent). Keep the data link; just re-register.
+    // Lost the connection server (not necessarily the opponent).
     if (p !== peer || p.destroyed) return;
-    if (!isConnected()) setNet("reconnecting", "Lost contact with the connection server. Retrying…");
-    scheduleRetry(() => {
-      if (p !== peer) return;
-      if (p.destroyed) startHost(roomId, true);
-      else if (p.disconnected) p.reconnect();
-    });
+    clearTimeout(retryTimer);
+    retryTimer = setTimeout(() => {
+      if (p === peer && !p.destroyed && p.disconnected) p.reconnect();
+    }, Math.min(5000, 1000 * Math.pow(2, Math.min(retryAttempt++, 3))));
   });
 
   p.on("error", err => {
@@ -863,160 +933,264 @@ function startHost(roomId, resume) {
         startHost(newRoomId(), false); // brand-new room collided; pick another ID
         return;
       }
-      // Our old connection to the broker hasn't timed out yet. Keep trying.
-      setNet("reconnecting", "Re-opening your room (the old connection is still closing)…");
-      destroyPeer();
-      scheduleRetry(() => startHost(roomId, true));
+      if (isConnected() && !linkPaused) {
+        // The data link to the opponent still works; keep it. Try the
+        // server again later.
+        clearTimeout(retryTimer);
+        retryTimer = setTimeout(() => {
+          if (p === peer && !p.destroyed && p.disconnected) p.reconnect();
+        }, 5000);
+        return;
+      }
+      // Our frozen old registration hasn't expired yet. Use the other name.
+      setNet("reconnecting", "Re-opening your room…");
+      hostIdFlips++;
+      const next = 1 - idIndex;
+      if (hostIdFlips <= 2) startHost(roomId, true, next);
+      else { destroyPeer(); scheduleRetry(() => startHost(roomId, true, next)); }
       return;
     }
     if (err.type === "peer-unavailable") return; // not relevant for the host
 
     if (!session) {
-      // Never got a room in the first place.
       destroyPeer();
       connError = friendlyError(err);
       setNet("error", connError);
       return;
     }
-    if (isConnected() && !p.destroyed) return; // data link still fine; 'disconnected' handles broker
-    setNet("reconnecting", friendlyError(err));
     if (p.destroyed) {
-      scheduleRetry(() => startHost(roomId, true));
+      setNet("reconnecting", friendlyError(err));
+      scheduleRetry(() => startHost(roomId, true, hostIdIndex));
     }
+    // otherwise the "disconnected" handler re-registers
   });
 }
 
 // ---------- CLIENT ----------
-// Each (re)join attempt uses a fresh Peer, then dials the host's room ID.
+// One Peer per page; it keeps re-dialing the host while the link is down.
 function startClient(roomId) {
   clearTimeout(retryTimer);
   destroyPeer();
+  unavailableIds = new Set();
 
   const p = new Peer(undefined, { config: ICE_CONFIG });
   peer = p;
 
   p.on("open", () => {
     if (p !== peer) return;
-    if (conn) return; // broker reconnect while already linked
-    const c = p.connect(roomId, { reliable: true });
-    attachConnection(c);
-    clearTimeout(connectTimer);
-    connectTimer = setTimeout(() => {
-      if (c !== conn || c.open) return;
-      conn = null;
-      try { c.close(); } catch (e) {}
-      clientConnectFailed(roomId, TIMEOUT_MSG);
-    }, CONNECT_TIMEOUT);
+    retryAttempt = 0;
+    if (!session) {
+      // First join: dial and give up after a while.
+      dialHost(roomId);
+      clearTimeout(connectTimer);
+      connectTimer = setTimeout(() => {
+        if (p !== peer || isConnected()) return;
+        firstJoinFailed(TIMEOUT_MSG);
+      }, CONNECT_TIMEOUT);
+    } else if (!isConnected() || linkPaused) {
+      probeNow();
+    }
   });
 
   p.on("disconnected", () => {
     if (p !== peer || p.destroyed) return;
-    if (isConnected()) {
-      // Opponent link is fine; quietly re-register with the broker.
-      scheduleRetry(() => { if (p === peer && !p.destroyed && p.disconnected) p.reconnect(); });
-    }
+    clearTimeout(retryTimer);
+    retryTimer = setTimeout(() => {
+      if (p === peer && !p.destroyed && p.disconnected) p.reconnect();
+    }, 1000);
   });
 
   p.on("error", err => {
     if (p !== peer) return;
-    if (isConnected()) return; // data link still up; ignore broker hiccups
-    const c = conn;
-    conn = null;
-    clearTimeout(connectTimer);
-    if (c) { try { c.close(); } catch (e) {} }
-    clientConnectFailed(roomId, friendlyError(err));
+    if (err.type === "peer-unavailable") {
+      if (!session) {
+        const m = /peer\s+(\S+)/i.exec(err.message || "");
+        if (m) unavailableIds.add(m[1].replace(/[.,]$/, ""));
+        const ids = hostIdsFor(roomId);
+        if (ids.every(id => unavailableIds.has(id))) firstJoinFailed(FRIENDLY_ERRORS["peer-unavailable"]);
+      }
+      const m2 = /peer\s+(\S+)/i.exec(err.message || "");
+      if (m2) dropDialsTo(m2[1].replace(/[.,]$/, ""));
+      return; // during reconnects: host not back yet; the next re-dial retries
+    }
+    if (!session) {
+      firstJoinFailed(friendlyError(err));
+      return;
+    }
+    if (p.destroyed) {
+      // Peer is unusable: build a new one (keeps showing the last state).
+      peer = null;
+      scheduleRetry(() => startClient(roomId));
+    }
   });
 }
 
-function clientConnectFailed(roomId, message) {
-  if (!session) {
-    // First join failed: stop and let the user fix the Room ID.
-    destroyPeer();
-    connError = message;
-    setNet("error", message);
-    return;
-  }
-  // Already in this room before: keep trying (the host may be refreshing).
+function firstJoinFailed(message) {
   destroyPeer();
-  setNet("reconnecting", "Reconnecting to opponent…");
-  scheduleRetry(() => startClient(roomId));
+  joiningRoomId = null;
+  connError = message;
+  setNet("error", message);
+}
+
+// Dial both possible host names; whichever opens first wins.
+// Each name gets its own attempt; a still-running attempt (setting up through
+// a relay can take several seconds) is left alone, a stale one is replaced.
+function dialHost(roomId) {
+  if (!peer || peer.destroyed || peer.disconnected) return;
+  const now = Date.now();
+  hostIdsFor(roomId).forEach(id => {
+    const inFlight = [...pendingConns].filter(x => x.peer === id);
+    const stillGoing = x => {
+      const age = now - (x._dialedAt || 0);
+      const answered = !!(x.peerConnection && x.peerConnection.remoteDescription);
+      // Host answered: give it time to finish. No answer yet: re-dial soon
+      // (the host may have only just come back online).
+      return answered ? age < DIAL_TIMEOUT : age < PROBE_EVERY - 200;
+    };
+    if (inFlight.some(stillGoing)) return;
+    inFlight.forEach(closeQuietly);
+    let c;
+    try { c = peer.connect(id, { reliable: true }); } catch (e) { return; }
+    if (!c) return;
+    c._dialedAt = now;
+    wireConnection(c);
+    setTimeout(() => { if (pendingConns.has(c)) closeQuietly(c); }, DIAL_TIMEOUT);
+  });
+}
+
+// The server says nobody is registered under that name (yet): drop that
+// attempt so the next re-dial can try again right away.
+function dropDialsTo(id) {
+  [...pendingConns].filter(x => x.peer === id).forEach(closeQuietly);
+}
+
+// Re-dial the host every ~2.5 s until the link is healthy again.
+function startProbing() {
+  if (mySide() !== "client" || probeTimer) return;
+  probeNow();
+  probeTimer = setInterval(probeNow, PROBE_EVERY);
+}
+
+function stopProbing() {
+  clearInterval(probeTimer);
+  probeTimer = null;
+}
+
+function probeNow() {
+  if (!session || mySide() !== "client") return;
+  if (isConnected() && !linkPaused) { stopProbing(); return; }
+  if (!peer || peer.destroyed) { startClient(session.roomId); return; }
+  if (peer.disconnected) { try { peer.reconnect(); } catch (e) {} return; }
+  if (!peer.open) return; // still registering; "open" handler will probe
+  dialHost(session.roomId);
 }
 
 // ---------- SHARED ----------
-function attachConnection(c) {
-  if (conn && conn !== c) {
-    // A newer connection replaces the old one (e.g. the opponent refreshed).
-    const old = conn;
-    conn = null;
-    try { old.close(); } catch (e) {}
-  }
-  conn = c;
+function wireConnection(c) {
+  pendingConns.add(c);
 
   c.on("open", () => {
-    if (c !== conn) return;
-    clearTimeout(connectTimer);
-    clearTimeout(retryTimer);
-    retryAttempt = 0;
-    lastSeen = Date.now();
-    connError = "";
-
-    if (!session) {
-      // First successful join as client: remember the room.
-      session = { side: "client", roomId: c.peer };
-      saveSession();
-      view = "flow";
-    }
-    setPending(false);
-    startHeartbeat();
-    watchIce(c);
-
-    if (mySide() === "host") {
-      if (gameState.phase === "teams" || view === "connect") view = "flow";
-      sendSnapshot();
-    }
-    flushOutbox();
-    setNet("connected", "Connected to opponent");
+    pendingConns.delete(c);
+    if (!peer || c.provider !== peer) { closeQuietly(c); return; }
+    promote(c);
   });
 
   c.on("data", data => {
     if (c !== conn) return;
     lastSeen = Date.now();
+    if (linkPaused) markHealthy();
     handleMessage(data);
   });
 
   c.on("close", () => {
+    pendingConns.delete(c);
     if (c !== conn) return;
     conn = null;
     onConnectionLost();
   });
 
   c.on("error", () => {
+    pendingConns.delete(c);
     if (c !== conn) return;
     conn = null;
-    try { c.close(); } catch (e) {}
+    closeQuietly(c);
     onConnectionLost();
   });
 }
 
-// Notice a dead link within a few seconds (e.g. the other page refreshed)
-// instead of waiting for the heartbeat timeout.
+// A freshly opened link becomes THE link (replacing any older one).
+function promote(c) {
+  const old = conn;
+  conn = c;
+  if (old && old !== c) closeQuietly(old);
+  if (mySide() !== "host") closePending(); // other dial attempts no longer needed
+
+  clearTimeout(connectTimer);
+  clearTimeout(retryTimer);
+  stopProbing();
+  retryAttempt = 0;
+  lastSeen = Date.now();
+  linkPaused = false;
+  unhealthySince = 0;
+  hadOpponent = true;
+  selfHealDelay = 10000;
+  connError = "";
+
+  if (!session) {
+    // First successful join as client: remember the room.
+    session = { side: "client", roomId: joiningRoomId || normalizeRoomId(c.peer) };
+    saveSession();
+    joiningRoomId = null;
+    view = "flow";
+  }
+  setPending(false);
+  startHeartbeat();
+  watchIce(c);
+
+  if (mySide() === "host") {
+    if (gameState.phase === "teams" || view === "connect") view = "flow";
+    sendSnapshot();
+  }
+  flushOutbox();
+  setNet("connected", "Connected to opponent");
+}
+
+// The other side went quiet but the link may still recover (e.g. they
+// switched apps for a moment). Keep the link, keep the board, re-dial.
+function markPaused() {
+  if (!linkPaused) {
+    linkPaused = true;
+    if (!unhealthySince) unhealthySince = Date.now();
+    setPending(false);
+    setNet("reconnecting", PAUSED_MSG);
+  }
+  startProbing();
+}
+
+function markHealthy() {
+  linkPaused = false;
+  unhealthySince = 0;
+  stopProbing();
+  setNet("connected", "Connected to opponent");
+}
+
+// Notice trouble within a few seconds without killing a link that may recover.
 function watchIce(c) {
   const pc = c.peerConnection;
   if (!pc || !pc.addEventListener) return;
-  let timer = null;
-  const drop = () => {
-    if (c !== conn) return;
-    conn = null;
-    try { c.close(); } catch (e) {}
-    onConnectionLost();
-  };
   pc.addEventListener("iceconnectionstatechange", () => {
-    clearTimeout(timer);
+    if (c !== conn) return;
     const st = pc.iceConnectionState;
-    if (st === "failed" || st === "closed") drop();
-    else if (st === "disconnected") timer = setTimeout(() => {
-      if (pc.iceConnectionState === "disconnected") drop();
-    }, 4000);
+    if (st === "failed" || st === "closed") {
+      conn = null;
+      closeQuietly(c);
+      onConnectionLost();
+    } else if (st === "disconnected") {
+      markPaused();
+    } else if ((st === "connected" || st === "completed") && linkPaused &&
+               Date.now() - lastSeen < HEARTBEAT_STALE) {
+      markHealthy();
+    }
   });
 }
 
@@ -1024,31 +1198,34 @@ function onConnectionLost() {
   stopHeartbeat();
   clearTimeout(connectTimer);
   setPending(false);
+  linkPaused = false;
+  if (!unhealthySince) unhealthySince = Date.now();
   if (!session) {
-    clientConnectFailed(null, TIMEOUT_MSG);
+    // First join: ignore; the join timeout / errors report the problem.
     return;
   }
   if (mySide() === "host") {
-    setNet("waiting", "Opponent disconnected — waiting for them to rejoin…");
+    setNet("waiting", PAUSED_MSG);
   } else {
-    setNet("reconnecting", "Connection lost — reconnecting…");
-    const roomId = session.roomId;
-    scheduleRetry(() => startClient(roomId));
+    setNet("reconnecting", PAUSED_MSG);
+    startProbing();
   }
 }
 
 function startHeartbeat() {
   stopHeartbeat();
   heartbeatTimer = setInterval(() => {
-    if (!conn || !conn.open) return;
-    if (Date.now() - lastSeen > HEARTBEAT_DEAD) {
+    if (!conn) return;
+    const silent = Date.now() - lastSeen;
+    if (silent > HEARTBEAT_DEAD) {
       const c = conn;
       conn = null;
-      try { c.close(); } catch (e) {}
+      closeQuietly(c);
       onConnectionLost();
       return;
     }
-    try { conn.send({ type: "ping" }); } catch (e) {}
+    if (silent > HEARTBEAT_STALE) markPaused();
+    if (conn.open) { try { conn.send({ type: "ping" }); } catch (e) {} }
   }, HEARTBEAT_EVERY);
 }
 
@@ -1078,6 +1255,72 @@ function sendSnapshot() {
   }
 }
 
+// Page woke up (app switched back, screen unlocked, network back):
+// check everything right away instead of waiting for timers.
+// A 1-second "clock" lets us tell when this page itself was paused.
+// (Timers don't run while a phone has the page paused, so a big gap between
+// ticks means we just woke up.)
+let lastTick = Date.now();
+setInterval(() => {
+  const gap = Date.now() - lastTick;
+  if (gap > 5000) wakeUp(true);
+  lastTick = Date.now();
+  hostSelfHeal();
+}, 1000);
+
+// HOST: if the opponent has been unreachable for a while and none of their
+// re-dials are getting through, our server connection is probably stuck
+// (e.g. after a Wi-Fi drop). Re-open the room under the other name.
+function hostSelfHeal() {
+  if (!session || mySide() !== "host") return;
+  if (!hadOpponent && gameState.seq === 0) return;
+  if (isConnected() && !linkPaused) return;
+  const now = Date.now();
+  const since = Math.max(unhealthySince || now, lastIncomingAt, selfHealAt);
+  if (now - since < selfHealDelay) return;
+  selfHealAt = now;
+  selfHealDelay = Math.min(20000, selfHealDelay * 2);
+  startHost(session.roomId, true, 1 - hostIdIndex);
+}
+
+function wakeUp(justSlept) {
+  if (!session) return;
+  const slept = justSlept === true || Date.now() - lastTick > 5000; // page was frozen
+  lastTick = Date.now();
+  retryAttempt = 0;
+  if (isConnected() && Date.now() - lastSeen > HEARTBEAT_STALE) markPaused();
+  const unhealthy = !isConnected() || linkPaused;
+
+  if (mySide() === "host") {
+    if (!peer || peer.destroyed) {
+      startHost(session.roomId, true, hostIdIndex);
+      return;
+    }
+    if (slept && unhealthy) {
+      // After a pause the old server connection is often stuck (the phone's
+      // network was suspended), and the server may still be holding our
+      // name. Re-open the room right away under the other name; the
+      // opponent's device dials both names.
+      startHost(session.roomId, true, 1 - hostIdIndex);
+      return;
+    }
+    if (peer.disconnected) {
+      try { peer.reconnect(); } catch (e) {}
+    }
+    if (conn && conn.open) {
+      try { conn.send({ type: "ping" }); } catch (e) {}
+      sendSnapshot();
+    }
+  } else {
+    if (conn && conn.open) { try { conn.send({ type: "ping" }); } catch (e) {} }
+    if (slept && unhealthy) {
+      startClient(session.roomId); // fresh registration, then re-dial
+    } else if (unhealthy) {
+      probeNow();
+    }
+  }
+}
+
 // ===============================
 // 13. MESSAGE HANDLER
 // ===============================
@@ -1092,7 +1335,7 @@ function handleMessage(data) {
     case "going-away": { // other page is refreshing/closing: drop now, rejoin fast
       const c = conn;
       conn = null;
-      if (c) { try { c.close(); } catch (e) {} }
+      closeQuietly(c);
       retryAttempt = 0;
       onConnectionLost();
       return;
@@ -1158,6 +1401,7 @@ el.joinBtn.onclick = () => {
   retryAttempt = 0;
   netStatus = { state: "connecting", text: "Connecting to " + joinId + "…" };
   render();
+  joiningRoomId = joinId;
   startClient(joinId);
 };
 
@@ -1179,6 +1423,10 @@ function leaveRoom(message) {
   const c = conn;
   conn = null;
   stopHeartbeat();
+  stopProbing();
+  closePending();
+  joiningRoomId = null;
+  linkPaused = false;
   setTimeout(() => {
     if (c) { try { c.close(); } catch (e) {} }
     if (p) { try { p.destroy(); } catch (e) {} }
@@ -1212,18 +1460,17 @@ window.addEventListener("pagehide", announceGoingAway);
 // connection is gone; start fresh (the saved session rejoins the room).
 window.addEventListener("pageshow", e => {
   if (e.persisted) location.reload();
+  else wakeUp();
 });
 
-// When a tab comes back to the foreground, check the link right away.
+// When the page comes back (app switched back, screen unlocked, network
+// back), reconnect right away instead of waiting for timers.
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState !== "visible" || !session) return;
-  if (isConnected()) {
-    try { conn.send({ type: "ping" }); } catch (e) {}
-  } else if (mySide() === "client" && !conn) {
-    retryAttempt = 0;
-    startClient(session.roomId);
-  }
+  if (document.visibilityState === "visible") wakeUp();
 });
+document.addEventListener("resume", wakeUp);   // Chrome page-lifecycle "unfrozen"
+window.addEventListener("focus", wakeUp);
+window.addEventListener("online", wakeUp);
 
 // ===============================
 // 15. LOAD STATE ON START
