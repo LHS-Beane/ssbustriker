@@ -269,3 +269,8 @@ button:disabled {
 .winner-text {
     color: #ffeb3b;
 }
+
+#match-history {
+    text-align: center;
+    margin: 0 0 10px;
+}
